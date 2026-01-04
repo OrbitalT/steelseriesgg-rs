@@ -113,7 +113,7 @@ impl Keyboard for GenericKeyboard {
         // Format: [0x21, 0xFF, R, G, B, R, G, B, ...] for each zone
         let mut data = vec![0x21, 0xFF];
 
-        for (i, color) in colors.iter().take(self.zone_count).enumerate() {
+        for color in colors.iter().take(self.zone_count) {
             data.push(color.r);
             data.push(color.g);
             data.push(color.b);
