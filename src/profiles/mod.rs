@@ -139,7 +139,7 @@ impl ProfileManager {
     /// Create a new profile manager.
     pub fn new() -> Result<Self> {
         let profiles_dir = Config::config_dir()
-            .ok_or_else(|| Error::Profile("Could not determine config directory".to_string()))?
+            .ok_or_else(|| Error::Profile("could not determine config directory".to_string()))?
             .join("profiles");
 
         std::fs::create_dir_all(&profiles_dir)?;
