@@ -278,8 +278,12 @@ impl EffectEngine {
             }
 
             Effect::Custom { colors } => {
-                let mut result = colors.clone();
-                result.resize(self.zone_count, Color::BLACK);
+                let mut result = Vec::with_capacity(self.zone_count);
+                let copy_len = colors.len().min(self.zone_count);
+                result.extend_from_slice(&colors[..copy_len]);
+                if self.zone_count > copy_len {
+                    result.resize(self.zone_count, Color::BLACK);
+                }
                 result
             }
 
