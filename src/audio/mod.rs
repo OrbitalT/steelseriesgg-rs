@@ -241,9 +241,14 @@ impl AudioMixer {
     }
 
     /// Apply channel settings to the audio system.
+    ///
+    /// Currently this is a no-op that always returns `Ok(())`. It is a placeholder
+    /// for future PulseAudio/PipeWire integration and does not yet interact with
+    /// the underlying audio system.
     fn apply_channel(&self, _channel: Channel) -> Result<()> {
         // TODO: Implement PulseAudio/PipeWire integration
-        // This would use libpulse to set sink input volumes
+        // This would use libpulse to set sink input volumes and may return an error
+        // if the underlying audio system interaction fails.
         Ok(())
     }
 
