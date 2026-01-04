@@ -24,7 +24,7 @@ pub struct GameMetadata {
     /// Developer/publisher name.
     pub developer: String,
 
-    /// Optional icon URL (color ID 0-40).
+    /// Optional deinitialization timeout in milliseconds.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deinitialize_timer_length_ms: Option<u32>,
 }
