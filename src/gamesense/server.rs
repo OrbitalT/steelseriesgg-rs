@@ -204,7 +204,7 @@ async fn game_event(
         state_write
             .event_values
             .entry(event.game.clone())
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(event.event.clone(), event.data.value);
     } // Write lock released here
 
