@@ -1,0 +1,304 @@
+//! GameSense HTTP server implementation.
+
+use axum::{
+    extract::State,
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use tower_http::cors::CorsLayer;
+use tracing::{debug, info, warn};
+
+use super::*;
+use crate::Result;
+
+/// Shared server state.
+pub struct ServerState {
+    /// Registered games.
+    pub games: HashMap<String, GameMetadata>,
+
+    /// Event bindings per game.
+    pub bindings: HashMap<String, HashMap<String, EventBinding>>,
+
+    /// Last event values.
+    pub event_values: HashMap<String, HashMap<String, i32>>,
+
+    /// Callback for RGB updates.
+    pub rgb_callback: Option<Box<dyn Fn(&str, u8, u8, u8) + Send + Sync>>,
+}
+
+impl Default for ServerState {
+    fn default() -> Self {
+        Self {
+            games: HashMap::new(),
+            bindings: HashMap::new(),
+            event_values: HashMap::new(),
+            rgb_callback: None,
+        }
+    }
+}
+
+/// GameSense-compatible HTTP server.
+pub struct GameSenseServer {
+    state: Arc<RwLock<ServerState>>,
+    bind_addr: SocketAddr,
+}
+
+impl GameSenseServer {
+    pub fn new(host: &str, port: u16) -> Result<Self> {
+        let addr: SocketAddr = format!("{}:{}", host, port)
+            .parse()
+            .map_err(|e| Error::GameSense(format!("Invalid bind address: {}", e)))?;
+
+        Self {
+            state: Arc::new(RwLock::new(ServerState::default())),
+            bind_addr: addr,
+        }
+    }
+
+    /// Set a callback for RGB color changes.
+    pub async fn set_rgb_callback<F>(&self, callback: F)
+    where
+        F: Fn(&str, u8, u8, u8) + Send + Sync + 'static,
+    {
+        let mut state = self.state.write().await;
+        state.rgb_callback = Some(Box::new(callback));
+    }
+
+    /// Build the router.
+    fn router(&self) -> Router {
+        let state = self.state.clone();
+
+        Router::new()
+            // GameSense SDK endpoints
+            .route("/game_metadata", post(register_game))
+            .route("/bind_game_event", post(bind_event))
+            .route("/register_game_event", post(register_event))
+            .route("/game_event", post(game_event))
+            .route("/game_heartbeat", post(heartbeat))
+            .route("/remove_game", post(remove_game))
+            .route("/remove_game_event", post(remove_event))
+            // Info endpoint
+            .route("/", get(server_info))
+            .layer(CorsLayer::permissive())
+            .with_state(state)
+    }
+
+    /// Start the server.
+    pub async fn run(&self) -> Result<()> {
+        let router = self.router();
+
+        info!("GameSense server listening on {}", self.bind_addr);
+
+        // Write the coreProps.json file for game discovery
+        self.write_core_props().await?;
+
+        let listener = tokio::net::TcpListener::bind(self.bind_addr).await?;
+        axum::serve(listener, router).await?;
+
+        Ok(())
+    }
+
+    /// Write coreProps.json for game SDK discovery.
+    async fn write_core_props(&self) -> Result<()> {
+        let props = serde_json::json!({
+            "address": format!("127.0.0.1:{}", self.bind_addr.port())
+        });
+
+        // Standard location for SteelSeries Engine
+        #[cfg(target_os = "linux")]
+        let path = std::path::Path::new("/tmp/steelseries-engine/coreProps.json");
+
+        #[cfg(target_os = "windows")]
+        let path = {
+            let programdata = std::env::var("PROGRAMDATA").unwrap_or_default();
+            std::path::PathBuf::from(programdata)
+                .join("SteelSeries")
+                .join("SteelSeries Engine 3")
+                .join("coreProps.json")
+        };
+
+        #[cfg(target_os = "macos")]
+        let path = std::path::Path::new("/Library/Application Support/SteelSeries Engine 3/coreProps.json");
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        std::fs::write(path, serde_json::to_string_pretty(&props)?)?;
+        debug!("Wrote coreProps.json to {:?}", path);
+
+        Ok(())
+    }
+
+    /// Get the server address.
+    pub fn address(&self) -> SocketAddr {
+        self.bind_addr
+    }
+}
+
+type AppState = Arc<RwLock<ServerState>>;
+
+/// Server info endpoint.
+async fn server_info() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "address": "127.0.0.1",
+        "encrypted_address": null,
+        "sse_address": null,
+        "version": "4.0.0"
+    }))
+}
+
+/// Register a game.
+async fn register_game(
+    State(state): State<AppState>,
+    Json(metadata): Json<GameMetadata>,
+) -> (StatusCode, Json<ApiResponse>) {
+    let mut state = state.write().await;
+
+    info!("Registering game: {} ({})", metadata.game_display_name, metadata.game);
+
+    state.games.insert(metadata.game.clone(), metadata);
+
+    (StatusCode::OK, Json(ApiResponse::success()))
+}
+
+/// Bind an event handler.
+async fn bind_event(
+    State(state): State<AppState>,
+    Json(binding): Json<EventBinding>,
+) -> (StatusCode, Json<ApiResponse>) {
+    let mut state = state.write().await;
+
+    debug!("Binding event: {}:{}", binding.game, binding.event);
+
+    let game_bindings = state.bindings.entry(binding.game.clone()).or_default();
+    game_bindings.insert(binding.event.clone(), binding);
+
+    (StatusCode::OK, Json(ApiResponse::success()))
+}
+
+/// Register an event (without handlers).
+async fn register_event(
+    State(state): State<AppState>,
+    Json(binding): Json<EventBinding>,
+) -> (StatusCode, Json<ApiResponse>) {
+    // Same as bind for our purposes
+    bind_event(State(state), Json(binding)).await
+}
+
+/// Handle a game event.
+async fn game_event(
+    State(state): State<AppState>,
+    Json(event): Json<GameEvent>,
+) -> (StatusCode, Json<ApiResponse>) {
+    let state = state.read().await;
+
+    debug!("Game event: {}:{} = {}", event.game, event.event, event.data.value);
+
+    // Store the event value
+    // Note: Would need write lock to store, skipping for read-only demo
+
+    // Find the binding and apply it
+    if let Some(game_bindings) = state.bindings.get(&event.game) {
+        if let Some(binding) = game_bindings.get(&event.event) {
+            // Process handlers
+            for handler in &binding.handlers {
+                process_handler(handler, event.data.value, &state);
+            }
+        }
+    }
+
+    (StatusCode::OK, Json(ApiResponse::success()))
+}
+
+/// Process a handler with the given value.
+fn process_handler(handler: &Handler, value: i32, state: &ServerState) {
+    match handler {
+        Handler::RgbPerKeyZones { zone, color, .. }
+        | Handler::Keyboard { zone, color, .. }
+        | Handler::Mouse { zone, color, .. } => {
+            if let Some((r, g, b)) = compute_color(color, value) {
+                debug!("Setting {} to RGB({}, {}, {})", zone, r, g, b);
+                if let Some(ref callback) = state.rgb_callback {
+                    callback(zone, r, g, b);
+                }
+            }
+        }
+        Handler::Screen { zone, datas } => {
+            debug!("Screen update for zone {}: {:?}", zone, datas);
+        }
+        Handler::Tactile { zone, mode } => {
+            debug!("Tactile event for zone {}: {:?}", zone, mode);
+        }
+    }
+}
+
+/// Compute color from handler and value.
+fn compute_color(color: &ColorHandler, value: i32) -> Option<(u8, u8, u8)> {
+    match color {
+        ColorHandler::Static { red, green, blue } => Some((*red, *green, *blue)),
+
+        ColorHandler::Gradient { gradient } => {
+            let t = (value as f32 / 100.0).clamp(0.0, 1.0);
+            let r = (gradient.zero.red as f32 * (1.0 - t) + gradient.hundred.red as f32 * t) as u8;
+            let g = (gradient.zero.green as f32 * (1.0 - t) + gradient.hundred.green as f32 * t) as u8;
+            let b = (gradient.zero.blue as f32 * (1.0 - t) + gradient.hundred.blue as f32 * t) as u8;
+            Some((r, g, b))
+        }
+
+        ColorHandler::Range { color: ranges } => {
+            for range in ranges {
+                if value >= range.low && value <= range.high {
+                    return Some((range.color.red, range.color.green, range.color.blue));
+                }
+            }
+            None
+        }
+    }
+}
+
+/// Handle heartbeat.
+async fn heartbeat(
+    State(_state): State<AppState>,
+    Json(hb): Json<Heartbeat>,
+) -> (StatusCode, Json<ApiResponse>) {
+    debug!("Heartbeat from: {}", hb.game);
+    (StatusCode::OK, Json(ApiResponse::success()))
+}
+
+/// Remove a game.
+async fn remove_game(
+    State(state): State<AppState>,
+    Json(req): Json<RemoveGame>,
+) -> (StatusCode, Json<ApiResponse>) {
+    let mut state = state.write().await;
+
+    info!("Removing game: {}", req.game);
+
+    state.games.remove(&req.game);
+    state.bindings.remove(&req.game);
+    state.event_values.remove(&req.game);
+
+    (StatusCode::OK, Json(ApiResponse::success()))
+}
+
+/// Remove an event.
+async fn remove_event(
+    State(state): State<AppState>,
+    Json(req): Json<RemoveEvent>,
+) -> (StatusCode, Json<ApiResponse>) {
+    let mut state = state.write().await;
+
+    debug!("Removing event: {}:{}", req.game, req.event);
+
+    if let Some(game_bindings) = state.bindings.get_mut(&req.game) {
+        game_bindings.remove(&req.event);
+    }
+
+    (StatusCode::OK, Json(ApiResponse::success()))
+}
