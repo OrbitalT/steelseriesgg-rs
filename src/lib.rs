@@ -4,7 +4,7 @@
 //!
 //! ## Features
 //!
-//! - **Device Control**: RGB lighting, DPI settings, and more for SteelSeries devices
+//! - **Device Control**: RGB lighting and more for SteelSeries devices
 //! - **Audio Mixer**: Multi-channel audio mixing (Game, Chat, Media, Aux, Mic)
 //! - **GameSense**: HTTP API server for game integration and reactive lighting
 //! - **Profiles**: Save and load device configurations
@@ -12,7 +12,6 @@
 //! ## Supported Devices
 //!
 //! - Keyboards: Apex Pro, Apex 3 TKL, and more
-//! - Mice: Rival 3, Rival 5, Aerox series
 //! - Headsets: Arctis Nova Pro, Arctis 7/9, and more
 
 pub mod config;

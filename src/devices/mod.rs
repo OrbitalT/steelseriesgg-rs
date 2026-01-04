@@ -2,7 +2,6 @@
 
 pub mod discovery;
 pub mod keyboards;
-pub mod mice;
 pub mod headsets;
 
 use serde::{Deserialize, Serialize};
@@ -16,7 +15,6 @@ pub use discovery::DeviceManager;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DeviceType {
     Keyboard,
-    Mouse,
     Headset,
     Unknown,
 }
@@ -25,7 +23,6 @@ impl fmt::Display for DeviceType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DeviceType::Keyboard => write!(f, "Keyboard"),
-            DeviceType::Mouse => write!(f, "Mouse"),
             DeviceType::Headset => write!(f, "Headset"),
             DeviceType::Unknown => write!(f, "Unknown"),
         }
@@ -103,17 +100,6 @@ pub mod product_ids {
     pub const APEX_7: u16 = 0x1612;
     pub const APEX_7_TKL: u16 = 0x1616;
 
-    // Mice - Rival Series
-    pub const RIVAL_3: u16 = 0x1824;
-    pub const RIVAL_3_WIRELESS: u16 = 0x1830;
-    pub const RIVAL_5: u16 = 0x1836;
-    pub const RIVAL_600: u16 = 0x1724;
-    pub const RIVAL_650: u16 = 0x172B;
-    pub const AEROX_3: u16 = 0x1832;
-    pub const AEROX_3_WIRELESS: u16 = 0x1838;
-    pub const AEROX_5: u16 = 0x1850;
-    pub const AEROX_9: u16 = 0x185A;
-
     // Headsets - Arctis Series
     pub const ARCTIS_1: u16 = 0x12AD;
     pub const ARCTIS_1_WIRELESS: u16 = 0x12B3;
@@ -139,10 +125,6 @@ pub fn device_type_from_product_id(product_id: u16) -> DeviceType {
         APEX_PRO | APEX_PRO_TKL | APEX_PRO_TKL_2023 | APEX_3 | APEX_3_TKL | APEX_5 | APEX_7
         | APEX_7_TKL => DeviceType::Keyboard,
 
-        // Mice
-        RIVAL_3 | RIVAL_3_WIRELESS | RIVAL_5 | RIVAL_600 | RIVAL_650 | AEROX_3
-        | AEROX_3_WIRELESS | AEROX_5 | AEROX_9 => DeviceType::Mouse,
-
         // Headsets
         ARCTIS_1 | ARCTIS_1_WIRELESS | ARCTIS_5 | ARCTIS_7 | ARCTIS_7_2019 | ARCTIS_9
         | ARCTIS_PRO | ARCTIS_PRO_WIRELESS | ARCTIS_NOVA_PRO | ARCTIS_NOVA_PRO_WIRELESS
@@ -165,15 +147,6 @@ pub fn device_name_from_product_id(product_id: u16) -> &'static str {
         APEX_5 => "Apex 5",
         APEX_7 => "Apex 7",
         APEX_7_TKL => "Apex 7 TKL",
-        RIVAL_3 => "Rival 3",
-        RIVAL_3_WIRELESS => "Rival 3 Wireless",
-        RIVAL_5 => "Rival 5",
-        RIVAL_600 => "Rival 600",
-        RIVAL_650 => "Rival 650",
-        AEROX_3 => "Aerox 3",
-        AEROX_3_WIRELESS => "Aerox 3 Wireless",
-        AEROX_5 => "Aerox 5",
-        AEROX_9 => "Aerox 9",
         ARCTIS_1 => "Arctis 1",
         ARCTIS_1_WIRELESS => "Arctis 1 Wireless",
         ARCTIS_5 => "Arctis 5",

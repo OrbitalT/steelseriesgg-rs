@@ -21,10 +21,6 @@ pub struct Profile {
     #[serde(default)]
     pub keyboard: Option<KeyboardProfile>,
 
-    /// Mouse settings.
-    #[serde(default)]
-    pub mouse: Option<MouseProfile>,
-
     /// Headset settings.
     #[serde(default)]
     pub headset: Option<HeadsetProfile>,
@@ -47,33 +43,6 @@ impl Default for KeyboardProfile {
                 color: Color::WHITE,
             },
             brightness: 100,
-        }
-    }
-}
-
-/// Mouse-specific profile settings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MouseProfile {
-    /// LED color.
-    pub color: Color,
-
-    /// DPI settings for each slot.
-    pub dpi_slots: Vec<u16>,
-
-    /// Active DPI slot index.
-    pub active_slot: u8,
-
-    /// Polling rate in Hz.
-    pub polling_rate: u16,
-}
-
-impl Default for MouseProfile {
-    fn default() -> Self {
-        Self {
-            color: Color::WHITE,
-            dpi_slots: vec![800, 1600, 3200],
-            active_slot: 1,
-            polling_rate: 1000,
         }
     }
 }
@@ -112,7 +81,6 @@ impl Profile {
             name: name.into(),
             description: None,
             keyboard: None,
-            mouse: None,
             headset: None,
         }
     }
@@ -123,7 +91,6 @@ impl Profile {
             name: "Default".to_string(),
             description: Some("Default profile with standard settings".to_string()),
             keyboard: Some(KeyboardProfile::default()),
-            mouse: Some(MouseProfile::default()),
             headset: Some(HeadsetProfile::default()),
         }
     }
