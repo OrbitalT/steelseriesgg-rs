@@ -261,10 +261,7 @@ impl EffectEngine {
                     for i in 0..self.zone_count {
                         let zone_offset = match direction {
                             WaveDirection::LeftToRight => i as f32 / self.zone_count as f32,
-                            WaveDirection::RightToLeft => {
-                            WaveDirection::RightToLeft => {
-                                1.0 - (i as f32 / self.zone_count as f32)
-                            }
+                            WaveDirection::RightToLeft => 1.0 - (i as f32 / self.zone_count as f32),
                             WaveDirection::CenterOut => {
                                 let center = self.zone_count as f32 / 2.0;
                                 (i as f32 - center).abs() / center
