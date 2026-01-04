@@ -2,8 +2,8 @@
 # SteelSeries device permissions for user access
 # Sources: apex-tux, apex7tkl_linux, steelseries-linux
 
-# Generic input group access
-SUBSYSTEM=="input", GROUP="input", MODE="0666"
+# Generic input group access (restricted to SteelSeries devices)
+SUBSYSTEM=="input", ATTRS{idVendor}=="1038", GROUP="input", MODE="0660"
 
 # Vendor-wide USB and HID access
 SUBSYSTEM=="input", GROUP="input", MODE="0660"
