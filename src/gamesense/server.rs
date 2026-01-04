@@ -226,8 +226,7 @@ async fn game_event(
 fn process_handler(handler: &Handler, value: i32, state: &ServerState) {
     match handler {
         Handler::RgbPerKeyZones { zone, color, .. }
-        | Handler::Keyboard { zone, color, .. }
-        | Handler::Mouse { zone, color, .. } => {
+        | Handler::Keyboard { zone, color, .. } => {
             if let Some((r, g, b)) = compute_color(color, value) {
                 debug!("Setting {} to RGB({}, {}, {})", zone, r, g, b);
                 if let Some(ref callback) = state.rgb_callback {

@@ -92,11 +92,6 @@ impl DeviceManager {
         self.devices_by_type(DeviceType::Keyboard)
     }
 
-    /// Get all mice.
-    pub fn mice(&self) -> Vec<&DeviceInfo> {
-        self.devices_by_type(DeviceType::Mouse)
-    }
-
     /// Get all headsets.
     pub fn headsets(&self) -> Vec<&DeviceInfo> {
         self.devices_by_type(DeviceType::Headset)
@@ -118,7 +113,6 @@ impl DeviceManager {
         // Most SteelSeries devices use interface 1 for control
         let control_interface = match info.device_type {
             DeviceType::Keyboard => 1,
-            DeviceType::Mouse => 0,
             DeviceType::Headset => 3,
             DeviceType::Unknown => info.interface_number,
         };

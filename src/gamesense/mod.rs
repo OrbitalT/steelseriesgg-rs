@@ -104,15 +104,6 @@ pub enum Handler {
         mode: Option<String>,
     },
 
-    /// Mouse handler.
-    #[serde(rename = "mouse")]
-    Mouse {
-        zone: String,
-        color: ColorHandler,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        mode: Option<String>,
-    },
-
     /// Screen handler (OLED).
     #[serde(rename = "screened")]
     Screen {
