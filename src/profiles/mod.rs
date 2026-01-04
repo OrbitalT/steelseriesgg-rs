@@ -1,0 +1,225 @@
+//! Profile management for saving and loading device configurations.
+
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+use crate::config::Config;
+use crate::rgb::{Color, Effect};
+use crate::{Error, Result};
+
+/// A device configuration profile.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Profile {
+    /// Profile name.
+    pub name: String,
+
+    /// Optional description.
+    pub description: Option<String>,
+
+    /// Keyboard settings.
+    #[serde(default)]
+    pub keyboard: Option<KeyboardProfile>,
+
+    /// Mouse settings.
+    #[serde(default)]
+    pub mouse: Option<MouseProfile>,
+
+    /// Headset settings.
+    #[serde(default)]
+    pub headset: Option<HeadsetProfile>,
+}
+
+/// Keyboard-specific profile settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyboardProfile {
+    /// RGB effect.
+    pub effect: Effect,
+
+    /// Brightness (0-100).
+    pub brightness: u8,
+}
+
+impl Default for KeyboardProfile {
+    fn default() -> Self {
+        Self {
+            effect: Effect::Static {
+                color: Color::WHITE,
+            },
+            brightness: 100,
+        }
+    }
+}
+
+/// Mouse-specific profile settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MouseProfile {
+    /// LED color.
+    pub color: Color,
+
+    /// DPI settings for each slot.
+    pub dpi_slots: Vec<u16>,
+
+    /// Active DPI slot index.
+    pub active_slot: u8,
+
+    /// Polling rate in Hz.
+    pub polling_rate: u16,
+}
+
+impl Default for MouseProfile {
+    fn default() -> Self {
+        Self {
+            color: Color::WHITE,
+            dpi_slots: vec![800, 1600, 3200],
+            active_slot: 1,
+            polling_rate: 1000,
+        }
+    }
+}
+
+/// Headset-specific profile settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HeadsetProfile {
+    /// Sidetone level (0-100).
+    pub sidetone: u8,
+
+    /// Microphone volume (0-100).
+    pub mic_volume: u8,
+
+    /// EQ preset name.
+    pub eq_preset: String,
+
+    /// Auto-off timeout in minutes.
+    pub auto_off_minutes: u8,
+}
+
+impl Default for HeadsetProfile {
+    fn default() -> Self {
+        Self {
+            sidetone: 50,
+            mic_volume: 100,
+            eq_preset: "Flat".to_string(),
+            auto_off_minutes: 15,
+        }
+    }
+}
+
+impl Profile {
+    /// Create a new profile with the given name.
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            description: None,
+            keyboard: None,
+            mouse: None,
+            headset: None,
+        }
+    }
+
+    /// Create a default profile with all device settings.
+    pub fn default_full() -> Self {
+        Self {
+            name: "Default".to_string(),
+            description: Some("Default profile with standard settings".to_string()),
+            keyboard: Some(KeyboardProfile::default()),
+            mouse: Some(MouseProfile::default()),
+            headset: Some(HeadsetProfile::default()),
+        }
+    }
+}
+
+/// Manager for loading and saving profiles.
+pub struct ProfileManager {
+    profiles: HashMap<String, Profile>,
+    profiles_dir: PathBuf,
+}
+
+impl ProfileManager {
+    /// Create a new profile manager.
+    pub fn new() -> Result<Self> {
+        let profiles_dir = Config::config_dir()
+            .ok_or_else(|| Error::Profile("Could not determine config directory".to_string()))?
+            .join("profiles");
+
+        std::fs::create_dir_all(&profiles_dir)?;
+
+        let mut manager = Self {
+            profiles: HashMap::new(),
+            profiles_dir,
+        };
+
+        manager.load_all()?;
+        Ok(manager)
+    }
+
+    /// Load all profiles from disk.
+    pub fn load_all(&mut self) -> Result<()> {
+        self.profiles.clear();
+
+        if !self.profiles_dir.exists() {
+            return Ok(());
+        }
+
+        for entry in std::fs::read_dir(&self.profiles_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.extension().map(|e| e == "json").unwrap_or(false) {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if let Ok(profile) = serde_json::from_str::<Profile>(&content) {
+                        self.profiles.insert(profile.name.clone(), profile);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Save a profile to disk.
+    pub fn save(&self, profile: &Profile) -> Result<()> {
+        let path = self.profiles_dir.join(format!("{}.json", profile.name));
+        let content = serde_json::to_string_pretty(profile)?;
+        std::fs::write(path, content)?;
+        Ok(())
+    }
+
+    /// Get a profile by name.
+    pub fn get(&self, name: &str) -> Option<&Profile> {
+        self.profiles.get(name)
+    }
+
+    /// Add or update a profile.
+    pub fn set(&mut self, profile: Profile) -> Result<()> {
+        self.save(&profile)?;
+        self.profiles.insert(profile.name.clone(), profile);
+        Ok(())
+    }
+
+    /// Delete a profile.
+    pub fn delete(&mut self, name: &str) -> Result<()> {
+        let path = self.profiles_dir.join(format!("{}.json", name));
+        if path.exists() {
+            std::fs::remove_file(path)?;
+        }
+        self.profiles.remove(name);
+        Ok(())
+    }
+
+    /// List all profile names.
+    pub fn list(&self) -> Vec<&str> {
+        self.profiles.keys().map(|s| s.as_str()).collect()
+    }
+
+    /// Get all profiles.
+    pub fn all(&self) -> &HashMap<String, Profile> {
+        &self.profiles
+    }
+}
+
+impl Default for ProfileManager {
+    fn default() -> Self {
+        Self::new().expect("Failed to create profile manager")
+    }
+}
