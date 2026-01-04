@@ -214,6 +214,11 @@ impl AudioMixer {
                     }
                 }
             }
+        } else {
+            // When disabling streamer mode, clear streaming/monitoring state so that
+            // it will be re-initialized from current channel values next time.
+            self.state.streaming.clear();
+            self.state.monitoring.clear();
         }
 
         Ok(())
