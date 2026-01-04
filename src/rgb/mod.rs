@@ -292,7 +292,6 @@ impl EffectEngine {
             }
 
             Effect::Gradient { start, end } => {
-                self.cached_colors.reserve(self.zone_count);
                 for i in 0..self.zone_count {
                     let t = i as f32 / (self.zone_count - 1).max(1) as f32;
                     self.cached_colors.push(Color::blend(*start, *end, t));
