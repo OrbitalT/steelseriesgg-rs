@@ -1,5 +1,20 @@
 use hidapi::HidApi;
 use std::io::{self};
+use steelseries_sonar::{Sonar, SonarError};
+
+#[tokio::main]
+async fn main() -> Result<(), SonarError> {
+    // Create a new Sonar client
+    let sonar = Sonar::new().await?;
+    // Set master volume to 50%
+    sonar.set_volume("master", 0.5, None).await?;
+    // Mute the game channel
+    sonar.mute_channel("game", true, None).await?;
+    // Get current volume data
+    let volume_data = sonar.get_volume_data().await?;
+    println!("Current volume data: {}", volume_data);
+    Ok(())
+}
 
 /// Sends data to the connected HID device with a specified timeout.
 fn send_data_to_device(device: &mut hidapi::HidDevice, data: &[u8]) -> Result<(), String> {
