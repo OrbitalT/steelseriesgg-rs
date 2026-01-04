@@ -8,4 +8,6 @@ license = "MIT"
 edition = "2021"
 
 [dependencies]
+gamesense = "0.1.2"
 hidapi = "2.6.3" # Check here for the latest version: https://crates.io/crates/hidapi
+steelseries-sonar = "0.1.0"
