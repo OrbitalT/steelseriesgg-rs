@@ -196,19 +196,25 @@ async fn game_event(
     State(state): State<AppState>,
     Json(event): Json<GameEvent>,
 ) -> (StatusCode, Json<ApiResponse>) {
-    let state = state.read().await;
-
     debug!("Game event: {}:{} = {}", event.game, event.event, event.data.value);
 
-    // Store the event value
-    // Note: Would need write lock to store, skipping for read-only demo
+    // Store the event value with write lock (brief critical section)
+    {
+        let mut state_write = state.write().await;
+        state_write
+            .event_values
+            .entry(event.game.clone())
+            .or_insert_with(HashMap::new)
+            .insert(event.event.clone(), event.data.value);
+    } // Write lock released here
 
-    // Find the binding and apply it
-    if let Some(game_bindings) = state.bindings.get(&event.game) {
+    // Process handlers with read lock to allow concurrent event handling
+    let state_read = state.read().await;
+    if let Some(game_bindings) = state_read.bindings.get(&event.game) {
         if let Some(binding) = game_bindings.get(&event.event) {
             // Process handlers
             for handler in &binding.handlers {
-                process_handler(handler, event.data.value, &state);
+                process_handler(handler, event.data.value, &state_read);
             }
         }
     }

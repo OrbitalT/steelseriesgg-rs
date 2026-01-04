@@ -195,9 +195,25 @@ impl AudioMixer {
         self.state.streamer_mode = enabled;
 
         if enabled {
-            // Initialize streaming/monitoring with current values
-            self.state.streaming = self.state.channels.clone();
-            self.state.monitoring = self.state.channels.clone();
+            // Initialize streaming/monitoring only if empty (lazy initialization)
+            // Values will be populated on first access via or_default()
+            // This avoids unnecessary HashMap cloning
+            if self.state.streaming.is_empty() {
+                for &channel in &[Channel::Master, Channel::Game, Channel::Chat,
+                                  Channel::Media, Channel::Aux, Channel::Mic] {
+                    if let Some(channel_state) = self.state.channels.get(&channel) {
+                        self.state.streaming.insert(channel, channel_state.clone());
+                    }
+                }
+            }
+            if self.state.monitoring.is_empty() {
+                for &channel in &[Channel::Master, Channel::Game, Channel::Chat,
+                                  Channel::Media, Channel::Aux, Channel::Mic] {
+                    if let Some(channel_state) = self.state.channels.get(&channel) {
+                        self.state.monitoring.insert(channel, channel_state.clone());
+                    }
+                }
+            }
         }
 
         Ok(())
