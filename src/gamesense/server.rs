@@ -49,11 +49,10 @@ pub struct GameSenseServer {
 }
 
 impl GameSenseServer {
-    /// Create a new GameSense server.
-    pub fn new(host: &str, port: u16) -> Self {
+    pub fn new(host: &str, port: u16) -> Result<Self> {
         let addr: SocketAddr = format!("{}:{}", host, port)
             .parse()
-            .expect("Invalid bind address");
+            .map_err(|e| Error::GameSense(format!("Invalid bind address: {}", e)))?;
 
         Self {
             state: Arc::new(RwLock::new(ServerState::default())),
