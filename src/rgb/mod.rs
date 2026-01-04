@@ -180,6 +180,12 @@ pub struct EffectEngine {
     effect: Effect,
     start_time: Instant,
     zone_count: usize,
+    /// Cached colors from last computation
+    cached_colors: Vec<Color>,
+    /// Last time colors were computed
+    last_compute_time: Duration,
+    /// Minimum time between recomputes (16ms = ~60 FPS)
+    cache_threshold: Duration,
 }
 
 impl EffectEngine {
@@ -189,6 +195,9 @@ impl EffectEngine {
             effect,
             start_time: Instant::now(),
             zone_count,
+            cached_colors: vec![Color::BLACK; zone_count],
+            last_compute_time: Duration::ZERO,
+            cache_threshold: Duration::from_millis(16), // ~60 FPS
         }
     }
 
@@ -196,6 +205,7 @@ impl EffectEngine {
     pub fn set_effect(&mut self, effect: Effect) {
         self.effect = effect;
         self.start_time = Instant::now();
+        self.last_compute_time = Duration::ZERO; // Force recompute on next call
     }
 
     /// Get the current effect.
@@ -204,24 +214,38 @@ impl EffectEngine {
     }
 
     /// Compute current colors for all zones.
-    pub fn compute(&self) -> Vec<Color> {
-        let elapsed = self.start_time.elapsed().as_secs_f32();
+    /// Uses caching to avoid unnecessary recomputation.
+    pub fn compute(&mut self) -> &[Color] {
+        let elapsed = self.start_time.elapsed();
+
+        // Return cached colors if delta is below threshold
+        if elapsed.saturating_sub(self.last_compute_time) < self.cache_threshold {
+            return &self.cached_colors;
+        }
+
+        let elapsed_secs = elapsed.as_secs_f32();
+
+        // Reuse cached vector to avoid allocations
+        self.cached_colors.clear();
 
         match &self.effect {
-            Effect::Static { color } => vec![*color; self.zone_count],
+            Effect::Static { color } => {
+                self.cached_colors.resize(self.zone_count, *color);
+            }
 
             Effect::Breathing { color, speed } => {
                 // Sine wave for breathing effect
-                let t = (elapsed * speed * 2.0 * std::f32::consts::PI).sin();
+                let t = (elapsed_secs * speed * 2.0 * std::f32::consts::PI).sin();
                 let brightness = (t + 1.0) / 2.0; // Normalize to 0-1
-                vec![color.scale(brightness); self.zone_count]
+                let scaled_color = color.scale(brightness);
+                self.cached_colors.resize(self.zone_count, scaled_color);
             }
 
             Effect::Spectrum { speed } => {
                 // Cycle through hue
-                let hue = (elapsed * speed * 360.0) % 360.0;
+                let hue = (elapsed_secs * speed * 360.0) % 360.0;
                 let color = Color::from_hsv(hue, 1.0, 1.0);
-                vec![color; self.zone_count]
+                self.cached_colors.resize(self.zone_count, color);
             }
 
             Effect::Wave {
@@ -230,65 +254,64 @@ impl EffectEngine {
                 direction,
             } => {
                 if colors.is_empty() {
-                    return vec![Color::BLACK; self.zone_count];
+                    self.cached_colors.resize(self.zone_count, Color::BLACK);
+                } else {
+                    let phase = elapsed_secs * speed;
+
+                    for i in 0..self.zone_count {
+                        let zone_offset = match direction {
+                            WaveDirection::LeftToRight => i as f32 / self.zone_count as f32,
+                            WaveDirection::RightToLeft => 1.0 - (i as f32 / self.zone_count as f32),
+                            WaveDirection::CenterOut => {
+                                let center = self.zone_count as f32 / 2.0;
+                                (i as f32 - center).abs() / center
+                            }
+                            WaveDirection::OutCenter => {
+                                let center = self.zone_count as f32 / 2.0;
+                                1.0 - (i as f32 - center).abs() / center
+                            }
+                        };
+
+                        let t = (phase + zone_offset) % 1.0;
+                        let color_index = (t * colors.len() as f32) as usize % colors.len();
+                        let next_index = (color_index + 1) % colors.len();
+                        let blend_t = (t * colors.len() as f32) % 1.0;
+
+                        self.cached_colors.push(Color::blend(colors[color_index], colors[next_index], blend_t));
+                    }
                 }
-
-                let phase = elapsed * speed;
-                let mut result = Vec::with_capacity(self.zone_count);
-
-                for i in 0..self.zone_count {
-                    let zone_offset = match direction {
-                        WaveDirection::LeftToRight => i as f32 / self.zone_count as f32,
-                        WaveDirection::RightToLeft => {
-                            1.0 - (i as f32 / self.zone_count as f32)
-                        }
-                        WaveDirection::CenterOut => {
-                            let center = self.zone_count as f32 / 2.0;
-                            (i as f32 - center).abs() / center
-                        }
-                        WaveDirection::OutCenter => {
-                            let center = self.zone_count as f32 / 2.0;
-                            1.0 - (i as f32 - center).abs() / center
-                        }
-                    };
-
-                    let t = (phase + zone_offset) % 1.0;
-                    let color_index = (t * colors.len() as f32) as usize % colors.len();
-                    let next_index = (color_index + 1) % colors.len();
-                    let blend_t = (t * colors.len() as f32) % 1.0;
-
-                    result.push(Color::blend(colors[color_index], colors[next_index], blend_t));
-                }
-
-                result
             }
 
             Effect::Reactive { color, .. } => {
                 // Base state - actual reactivity handled by input events
-                vec![color.scale(0.2); self.zone_count]
+                let scaled_color = color.scale(0.2);
+                self.cached_colors.resize(self.zone_count, scaled_color);
             }
 
             Effect::Gradient { start, end } => {
-                let mut result = Vec::with_capacity(self.zone_count);
                 for i in 0..self.zone_count {
                     let t = i as f32 / (self.zone_count - 1).max(1) as f32;
-                    result.push(Color::blend(*start, *end, t));
+                    self.cached_colors.push(Color::blend(*start, *end, t));
                 }
-                result
             }
 
             Effect::Custom { colors } => {
-                let mut result = Vec::with_capacity(self.zone_count);
                 let copy_len = colors.len().min(self.zone_count);
-                result.extend_from_slice(&colors[..copy_len]);
+                self.cached_colors.extend_from_slice(&colors[..copy_len]);
                 if self.zone_count > copy_len {
-                    result.resize(self.zone_count, Color::BLACK);
+                    self.cached_colors.resize(self.zone_count, Color::BLACK);
                 }
-                result
             }
 
-            Effect::Off => vec![Color::BLACK; self.zone_count],
+            Effect::Off => {
+                self.cached_colors.resize(self.zone_count, Color::BLACK);
+            }
         }
+
+        // Update last compute time
+        self.last_compute_time = elapsed;
+
+        &self.cached_colors
     }
 
     /// Reset the effect timer.
@@ -328,10 +351,10 @@ impl RgbController {
     }
 
     /// Compute current colors with brightness applied.
-    pub fn compute_colors(&self) -> Vec<Color> {
+    pub fn compute_colors(&mut self) -> Vec<Color> {
         self.engine
             .compute()
-            .into_iter()
+            .iter()
             .map(|c| c.scale(self.brightness))
             .collect()
     }

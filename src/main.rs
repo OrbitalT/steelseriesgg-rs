@@ -201,13 +201,25 @@ async fn main() -> anyhow::Result<()> {
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
+    // Create DeviceManager once for all commands that need it
+    let needs_device_manager = matches!(
+        cli.command,
+        Commands::Devices | Commands::Rgb { .. } | Commands::Daemon
+    );
+
+    let manager = if needs_device_manager {
+        Some(DeviceManager::new()?)
+    } else {
+        None
+    };
+
     match cli.command {
         Commands::Devices => {
-            cmd_devices()?;
+            cmd_devices(manager.as_ref().unwrap())?;
         }
 
         Commands::Rgb { action } => {
-            cmd_rgb(action)?;
+            cmd_rgb(manager.as_ref().unwrap(), action)?;
         }
 
         Commands::Profile { action } => {
@@ -224,22 +236,19 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Commands::Daemon => {
-            cmd_daemon().await?;
+            cmd_daemon(manager.unwrap()).await?;
         }
     }
 
     Ok(())
 }
 
-fn cmd_devices() -> anyhow::Result<()> {
-    let manager = DeviceManager::new()?;
-    print_device_summary(&manager);
+fn cmd_devices(manager: &DeviceManager) -> anyhow::Result<()> {
+    print_device_summary(manager);
     Ok(())
 }
 
-fn cmd_rgb(action: RgbAction) -> anyhow::Result<()> {
-    let manager = DeviceManager::new()?;
-
+fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
     // Find the first keyboard
     let keyboard_info = manager
         .first_device_of_type(DeviceType::Keyboard)
@@ -428,7 +437,7 @@ async fn cmd_server(port: u16) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn cmd_daemon() -> anyhow::Result<()> {
+async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
     info!("Starting SteelSeries GG daemon");
 
     let config = Config::load()?;
@@ -444,8 +453,7 @@ async fn cmd_daemon() -> anyhow::Result<()> {
 
     info!("GameSense server started on port {}", config.gamesense.port);
 
-    // Initialize devices
-    let manager = DeviceManager::new()?;
+    // Use provided device manager
     print_device_summary(&manager);
 
     // Load default profile if configured

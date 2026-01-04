@@ -12,6 +12,8 @@ use crate::{Error, Result, STEELSERIES_VENDOR_ID};
 pub struct DeviceManager {
     api: HidApi,
     devices: HashMap<String, DeviceInfo>,
+    /// Cache of device paths indexed by (vendor_id, product_id, interface_number) for O(1) lookup
+    device_cache: HashMap<(u16, u16, i32), String>,
 }
 
 impl DeviceManager {
@@ -21,6 +23,7 @@ impl DeviceManager {
         let mut manager = Self {
             api,
             devices: HashMap::new(),
+            device_cache: HashMap::new(),
         };
         manager.refresh()?;
         Ok(manager)
@@ -29,6 +32,7 @@ impl DeviceManager {
     /// Refresh the list of connected devices.
     pub fn refresh(&mut self) -> Result<()> {
         self.devices.clear();
+        self.device_cache.clear();
         self.api.refresh_devices()?;
 
         for device in self.api.device_list() {
@@ -40,7 +44,8 @@ impl DeviceManager {
             let device_type = device_type_from_product_id(product_id);
             let name = device_name_from_product_id(product_id).to_string();
 
-            let path = device.path().to_string_lossy().to_string();
+            // Avoid double allocation: to_string_lossy returns Cow, into_owned is more efficient
+            let path = device.path().to_string_lossy().into_owned();
 
             let info = DeviceInfo {
                 name,
@@ -57,6 +62,10 @@ impl DeviceManager {
                 "Found device: {} (PID: {:#06x}, Interface: {})",
                 info.name, info.product_id, info.interface_number
             );
+
+            // Cache the device path for fast lookup
+            let cache_key = (device.vendor_id(), device.product_id(), device.interface_number());
+            self.device_cache.insert(cache_key, path.clone());
 
             self.devices.insert(path, info);
         }
@@ -114,6 +123,14 @@ impl DeviceManager {
             DeviceType::Unknown => info.interface_number,
         };
 
+        // Use cache for O(1) lookup instead of O(n) iteration
+        let cache_key = (info.vendor_id, info.product_id, control_interface);
+        if let Some(path) = self.device_cache.get(&cache_key) {
+            // Try to open by path directly
+            return self.api.open_path(path).map_err(Error::from);
+        }
+
+        // Fallback to iteration if not in cache (shouldn't happen after refresh)
         for device in self.api.device_list() {
             if device.vendor_id() == info.vendor_id
                 && device.product_id() == info.product_id
