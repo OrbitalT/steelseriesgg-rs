@@ -10,11 +10,9 @@ keywords = ["steelseries", "rgb", "gaming", "linux", "audio"]
 categories = ["hardware-support", "games"]
 
 [dependencies]
+hidapi = "=2.6.3" # Pinned to avoid build issues with 2.6.4 requiring libudev-dev
 # Async runtime
-tokio = { version = "1.49", features = ["full"] }
-
-# HID device communication
-hidapi = "2.6"
+tokio = { version = "1.38.0", features = ["rt-multi-thread", "macros"] }
 
 # HTTP server for GameSense API
 axum = "0.7"
