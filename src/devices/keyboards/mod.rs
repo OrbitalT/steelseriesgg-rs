@@ -37,7 +37,7 @@ impl GenericKeyboard {
     pub fn new(info: DeviceInfo, device: HidDevice) -> Self {
         // Determine zone count based on product ID
         let zone_count = match info.product_id {
-            0x1622 => 9,  // Apex 3 TKL - 10 zones
+            0x1622 => 9,  // Apex 3 TKL - 9 zones
             0x161A => 10, // Apex 3 - 10 zones
             _ => 1,       // Default single zone
         };
