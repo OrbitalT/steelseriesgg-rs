@@ -218,8 +218,7 @@ impl ProfileManager {
     }
 }
 
-impl Default for ProfileManager {
-    fn default() -> Self {
-        Self::new().expect("Failed to create profile manager")
-    }
-}
+// Note: `Default` is intentionally not implemented for `ProfileManager`
+// because creating a manager may fail at runtime (e.g., filesystem issues).
+// Callers should explicitly use `ProfileManager::new()` and handle the
+// returned `Result` instead of relying on `T::default()`.
