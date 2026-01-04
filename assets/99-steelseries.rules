@@ -9,7 +9,10 @@ SUBSYSTEM=="input", GROUP="input", MODE="0666"
 SUBSYSTEM=="usb", ATTRS{idVendor}=="1038", MODE="0666"
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1038", MODE="0666"
 
-# External script hook (requires steelseries-perms.py in same dir)
+# Optional external script hook: runs a helper to adjust permissions.
+# Note: steelseries-perms.py is not included in this project; see the project
+# documentation if you want to use a custom helper script with this rule.
+# Example:
 # ACTION=="add", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1038", RUN+="/etc/udev/rules.d/steelseries-perms.py '%E{DEVNAME}'"
 
 # ── Apex Keyboards ──────────────────────────────────────────────
