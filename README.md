@@ -53,6 +53,45 @@ sudo dnf install systemd-devel hidapi-devel
 sudo pacman -S hidapi
 ```
 
+### Installing from Arch Package
+
+If installing from the prebuilt Arch package (`.pkg.tar.zst`):
+
+```bash
+sudo pacman -U ssgg-*.pkg.tar.zst
+```
+
+The package includes:
+- Binary at `/usr/bin/ssgg`
+- Systemd user unit for daemon mode
+- udev rules for device access
+- License and documentation
+
+After installation:
+
+1. Add your user to the `input` group (required for device access):
+```bash
+sudo usermod -aG input $USER
+```
+
+2. Log out and log back in for the group change to take effect.
+
+3. Enable and start the daemon (optional):
+```bash
+systemctl --user enable --now ssgg.service
+```
+
+4. To have the service start at boot without login:
+```bash
+sudo loginctl enable-linger $USER
+```
+
+Check daemon status:
+```bash
+systemctl --user status ssgg.service
+journalctl --user -u ssgg.service -f
+```
+
 ### Building from Source
 
 ```bash
@@ -213,6 +252,25 @@ Run as a background daemon with device control and GameSense server:
 ssgg daemon
 ```
 
+The daemon will run in the foreground and can be stopped gracefully with Ctrl+C or `systemctl --user stop ssgg.service` when running as a systemd service.
+
+**Running as a systemd user service** (recommended for Arch Linux):
+
+After package installation, enable and start the service:
+```bash
+systemctl --user enable --now ssgg.service
+```
+
+View logs:
+```bash
+journalctl --user -u ssgg.service -f
+```
+
+Stop the service:
+```bash
+systemctl --user stop ssgg.service
+```
+
 ## Configuration
 
 Configuration is stored in `~/.config/ssgg/config.toml`:
@@ -247,12 +305,19 @@ debug = false
 
 ## Feature Flags
 
-- `audio` (default) - Enable audio mixer with PulseAudio support
-- `compat` - Enable compatibility with existing SteelSeries crates
+- `audio` - Enable audio mixer with PulseAudio support (optional)
+- `sonar` - Enable SteelSeries Sonar API integration (optional, requires `audio`)
 
-Build without audio:
+By default, no optional features are enabled. The Arch package ships with default features only.
+
+Build with audio support:
 ```bash
-cargo build --release --no-default-features
+cargo build --release --features audio
+```
+
+Build with all features:
+```bash
+cargo build --release --all-features
 ```
 
 ## License

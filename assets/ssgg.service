@@ -1,0 +1,13 @@
+[Unit]
+Description=SteelSeries GG daemon for Linux
+Documentation=https://github.com/Ven0m0/steelseriesgg-rs
+After=systemd-udevd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ssgg daemon
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

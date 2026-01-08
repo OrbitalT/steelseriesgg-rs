@@ -3,7 +3,6 @@
 //! A complete open-source replacement for SteelSeries GG on Linux.
 
 use clap::{Parser, Subcommand};
-use std::time::Duration;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -706,8 +705,31 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
 
     info!("Daemon running. Press Ctrl+C to stop.");
 
-    // Keep running
-    loop {
-        tokio::time::sleep(Duration::from_secs(60)).await;
+    // Set up graceful shutdown on SIGTERM (systemd stop) and SIGINT (Ctrl+C)
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        
+        let mut sigterm = signal(SignalKind::terminate())?;
+        let mut sigint = signal(SignalKind::interrupt())?;
+
+        tokio::select! {
+            _ = sigterm.recv() => {
+                info!("Received SIGTERM, shutting down gracefully...");
+            }
+            _ = sigint.recv() => {
+                info!("Received SIGINT, shutting down gracefully...");
+            }
+        }
     }
+
+    #[cfg(not(unix))]
+    {
+        use tokio::signal;
+        signal::ctrl_c().await?;
+        info!("Received Ctrl+C, shutting down gracefully...");
+    }
+
+    info!("Daemon stopped.");
+    Ok(())
 }
