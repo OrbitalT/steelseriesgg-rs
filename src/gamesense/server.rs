@@ -35,7 +35,6 @@ pub struct ServerState {
     pub rgb_callback: Option<RgbCallback>,
 }
 
-
 /// GameSense-compatible HTTP server.
 pub struct GameSenseServer {
     state: Arc<RwLock<ServerState>>,

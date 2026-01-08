@@ -59,9 +59,9 @@ impl GenericHeadset {
         let device = self.device.as_ref().ok_or(Error::DeviceCommunication(
             "Device not connected".to_string(),
         ))?;
-        let device = device.lock().map_err(|e| {
-            Error::DeviceCommunication(format!("Device lock poisoned: {}", e))
-        })?;
+        let device = device
+            .lock()
+            .map_err(|e| Error::DeviceCommunication(format!("Device lock poisoned: {}", e)))?;
 
         let mut report = vec![0u8; 64];
         report[..data.len().min(64)].copy_from_slice(&data[..data.len().min(64)]);
@@ -75,9 +75,9 @@ impl GenericHeadset {
         let device = self.device.as_ref().ok_or(Error::DeviceCommunication(
             "Device not connected".to_string(),
         ))?;
-        let device = device.lock().map_err(|e| {
-            Error::DeviceCommunication(format!("Device lock poisoned: {}", e))
-        })?;
+        let device = device
+            .lock()
+            .map_err(|e| Error::DeviceCommunication(format!("Device lock poisoned: {}", e)))?;
 
         let len = device.read_timeout(buf, 1000)?;
         Ok(len)

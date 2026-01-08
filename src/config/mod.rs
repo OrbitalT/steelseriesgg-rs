@@ -7,8 +7,7 @@ use std::path::PathBuf;
 use crate::Result;
 
 /// Application configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     /// GameSense server settings
     pub gamesense: GameSenseConfig,
@@ -23,7 +22,6 @@ pub struct Config {
     /// Enable debug logging
     pub debug: bool,
 }
-
 
 /// GameSense server configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -55,9 +55,9 @@ impl GenericKeyboard {
         let device = self.device.as_ref().ok_or(Error::DeviceCommunication(
             "Device not connected".to_string(),
         ))?;
-        let device = device.lock().map_err(|e| {
-            Error::DeviceCommunication(format!("Device lock poisoned: {}", e))
-        })?;
+        let device = device
+            .lock()
+            .map_err(|e| Error::DeviceCommunication(format!("Device lock poisoned: {}", e)))?;
 
         // Pad to 64 bytes with leading 0x00 for report ID
         let mut report = vec![0u8; 65];
@@ -99,9 +99,9 @@ impl Device for GenericKeyboard {
         let device = self.device.as_ref().ok_or(Error::DeviceCommunication(
             "Device not connected".to_string(),
         ))?;
-        let device = device.lock().map_err(|e| {
-            Error::DeviceCommunication(format!("Device lock poisoned: {}", e))
-        })?;
+        let device = device
+            .lock()
+            .map_err(|e| Error::DeviceCommunication(format!("Device lock poisoned: {}", e)))?;
 
         let len = device.read(buf)?;
         Ok(len)
