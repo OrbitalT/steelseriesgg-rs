@@ -599,11 +599,7 @@ async fn cmd_sonar(action: SonarAction) -> anyhow::Result<()> {
                         }
                     }
 
-                    println!(
-                        "Monitoring {} volume set to {}%",
-                        channel,
-                        level.min(100)
-                    );
+                    println!("Monitoring {} volume set to {}%", channel, level.min(100));
                 }
 
                 StreamerAction::Streaming { channel, level } => {
@@ -619,11 +615,7 @@ async fn cmd_sonar(action: SonarAction) -> anyhow::Result<()> {
                         }
                     }
 
-                    println!(
-                        "Streaming {} volume set to {}%",
-                        channel,
-                        level.min(100)
-                    );
+                    println!("Streaming {} volume set to {}%", channel, level.min(100));
                 }
             }
         }

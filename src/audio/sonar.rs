@@ -251,35 +251,50 @@ impl SonarClient {
     /// Set master volume (classic mode).
     pub async fn set_classic_master_volume(&self, volume: f32) -> Result<()> {
         let volume = volume.clamp(0.0, 1.0);
-        let url = format!("{}/volumeSettings/classic/master/volume/{}", self.base_url, volume);
+        let url = format!(
+            "{}/volumeSettings/classic/master/volume/{}",
+            self.base_url, volume
+        );
         self.put(&url, &()).await
     }
 
     /// Set game volume (classic mode).
     pub async fn set_classic_game_volume(&self, volume: f32) -> Result<()> {
         let volume = volume.clamp(0.0, 1.0);
-        let url = format!("{}/volumeSettings/classic/game/volume/{}", self.base_url, volume);
+        let url = format!(
+            "{}/volumeSettings/classic/game/volume/{}",
+            self.base_url, volume
+        );
         self.put(&url, &()).await
     }
 
     /// Set chat volume (classic mode).
     pub async fn set_classic_chat_volume(&self, volume: f32) -> Result<()> {
         let volume = volume.clamp(0.0, 1.0);
-        let url = format!("{}/volumeSettings/classic/chat/volume/{}", self.base_url, volume);
+        let url = format!(
+            "{}/volumeSettings/classic/chat/volume/{}",
+            self.base_url, volume
+        );
         self.put(&url, &()).await
     }
 
     /// Set media volume (classic mode).
     pub async fn set_classic_media_volume(&self, volume: f32) -> Result<()> {
         let volume = volume.clamp(0.0, 1.0);
-        let url = format!("{}/volumeSettings/classic/media/volume/{}", self.base_url, volume);
+        let url = format!(
+            "{}/volumeSettings/classic/media/volume/{}",
+            self.base_url, volume
+        );
         self.put(&url, &()).await
     }
 
     /// Set aux volume (classic mode).
     pub async fn set_classic_aux_volume(&self, volume: f32) -> Result<()> {
         let volume = volume.clamp(0.0, 1.0);
-        let url = format!("{}/volumeSettings/classic/aux/volume/{}", self.base_url, volume);
+        let url = format!(
+            "{}/volumeSettings/classic/aux/volume/{}",
+            self.base_url, volume
+        );
         self.put(&url, &()).await
     }
 
