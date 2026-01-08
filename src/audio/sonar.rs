@@ -245,7 +245,7 @@ impl SonarClient {
     /// Select an audio configuration.
     pub async fn select_config(&self, config_id: &str) -> Result<()> {
         let url = format!("{}/configs/{}/select", self.base_url, config_id);
-        self.put(&url, &()).await
+        self.put(&url).await
     }
 
     /// Set master volume (classic mode).
@@ -255,7 +255,7 @@ impl SonarClient {
             "{}/volumeSettings/classic/master/volume/{}",
             self.base_url, volume
         );
-        self.put(&url, &()).await
+        self.put(&url).await
     }
 
     /// Set game volume (classic mode).
@@ -265,7 +265,7 @@ impl SonarClient {
             "{}/volumeSettings/classic/game/volume/{}",
             self.base_url, volume
         );
-        self.put(&url, &()).await
+        self.put(&url).await
     }
 
     /// Set chat volume (classic mode).
@@ -275,7 +275,7 @@ impl SonarClient {
             "{}/volumeSettings/classic/chat/volume/{}",
             self.base_url, volume
         );
-        self.put(&url, &()).await
+        self.put(&url).await
     }
 
     /// Set media volume (classic mode).
@@ -285,7 +285,7 @@ impl SonarClient {
             "{}/volumeSettings/classic/media/volume/{}",
             self.base_url, volume
         );
-        self.put(&url, &()).await
+        self.put(&url).await
     }
 
     /// Set aux volume (classic mode).
@@ -295,7 +295,7 @@ impl SonarClient {
             "{}/volumeSettings/classic/aux/volume/{}",
             self.base_url, volume
         );
-        self.put(&url, &()).await
+        self.put(&url).await
     }
 
     /// Set monitoring master volume (streamer mode).
@@ -305,7 +305,7 @@ impl SonarClient {
             "{}/volumeSettings/streamer/monitoring/master/volume/{}",
             self.base_url, volume
         );
-        self.put(&url, &()).await
+        self.put(&url).await
     }
 
     /// Set monitoring game volume (streamer mode).
@@ -315,7 +315,7 @@ impl SonarClient {
             "{}/volumeSettings/streamer/monitoring/game/volume/{}",
             self.base_url, volume
         );
-        self.put(&url, &()).await
+        self.put(&url).await
     }
 
     /// Set monitoring chat volume (streamer mode).
@@ -325,7 +325,7 @@ impl SonarClient {
             "{}/volumeSettings/streamer/monitoring/chat/volume/{}",
             self.base_url, volume
         );
-        self.put(&url, &()).await
+        self.put(&url).await
     }
 
     /// Set streaming master volume (streamer mode).
@@ -335,7 +335,7 @@ impl SonarClient {
             "{}/volumeSettings/streamer/streaming/master/volume/{}",
             self.base_url, volume
         );
-        self.put(&url, &()).await
+        self.put(&url).await
     }
 
     /// Toggle stream redirection for a channel.
@@ -344,13 +344,13 @@ impl SonarClient {
             "{}/streamRedirections/{}/toggle/{}",
             self.base_url, channel, enabled
         );
-        self.put(&url, &()).await
+        self.put(&url).await
     }
 
     /// Stop recording audio samples.
     pub async fn stop_audio_sample_recording(&self) -> Result<()> {
         let url = format!("{}/audioSamples/stopRecord", self.base_url);
-        self.put(&url, &()).await
+        self.put(&url).await
     }
 
     // ========================================================================

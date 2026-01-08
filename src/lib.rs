@@ -21,7 +21,7 @@ pub mod gamesense;
 pub mod profiles;
 pub mod rgb;
 
-#[cfg(feature = "audio")]
+#[cfg(any(feature = "audio", feature = "sonar"))]
 pub mod audio;
 
 pub use error::{Error, Result};

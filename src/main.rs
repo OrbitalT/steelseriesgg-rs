@@ -7,7 +7,6 @@ use std::time::Duration;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-use steelseries_gg::audio::SonarClient;
 use steelseries_gg::config::Config;
 use steelseries_gg::devices::{discovery::print_device_summary, DeviceManager, DeviceType};
 use steelseries_gg::gamesense::GameSenseServer;
@@ -16,6 +15,9 @@ use steelseries_gg::rgb::{Color, Effect, WaveDirection};
 
 #[cfg(feature = "audio")]
 use steelseries_gg::audio::{AudioMixer, Channel};
+
+#[cfg(feature = "sonar")]
+use steelseries_gg::audio::SonarClient;
 
 /// SteelSeries GG for Linux - Control your SteelSeries devices
 #[derive(Parser)]
@@ -55,6 +57,7 @@ enum Commands {
     },
 
     /// Control SteelSeries Sonar (direct API access)
+    #[cfg(feature = "sonar")]
     Sonar {
         #[command(subcommand)]
         action: SonarAction,
@@ -155,6 +158,7 @@ enum AudioAction {
     },
 }
 
+#[cfg(feature = "sonar")]
 #[derive(Subcommand)]
 enum SonarAction {
     /// Show current Sonar status and volumes
@@ -191,6 +195,7 @@ enum SonarAction {
     Configs,
 }
 
+#[cfg(feature = "sonar")]
 #[derive(Subcommand)]
 enum StreamerAction {
     /// Set monitoring volume for a channel
@@ -214,7 +219,8 @@ enum StreamerAction {
 
 fn parse_color(s: &str) -> Option<Color> {
     // Try named colors
-    match s.to_lowercase().as_str() {
+    let s_lower = s.to_ascii_lowercase();
+    match s_lower.as_str() {
         "red" => return Some(Color::RED),
         "green" => return Some(Color::GREEN),
         "blue" => return Some(Color::BLUE),
@@ -242,7 +248,8 @@ fn parse_color(s: &str) -> Option<Color> {
 
 #[cfg(feature = "audio")]
 fn parse_channel(s: &str) -> Option<Channel> {
-    match s.to_lowercase().as_str() {
+    let s_lower = s.to_ascii_lowercase();
+    match s_lower.as_str() {
         "master" => Some(Channel::Master),
         "game" => Some(Channel::Game),
         "chat" => Some(Channel::Chat),
@@ -251,6 +258,12 @@ fn parse_channel(s: &str) -> Option<Channel> {
         "mic" => Some(Channel::Mic),
         _ => None,
     }
+}
+
+/// Convert a volume level (0-100) to a normalized float (0.0-1.0)
+#[cfg(feature = "sonar")]
+fn normalize_volume(level: u8) -> f32 {
+    (level.min(100) as f32) / 100.0
 }
 
 #[tokio::main]
@@ -285,6 +298,7 @@ async fn main() -> anyhow::Result<()> {
             cmd_audio(action)?;
         }
 
+        #[cfg(feature = "sonar")]
         Commands::Sonar { action } => {
             cmd_sonar(action).await?;
         }
@@ -354,7 +368,8 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
         }
 
         RgbAction::Effect { name, speed } => {
-            let effect = match name.to_lowercase().as_str() {
+            let name_lower = name.to_ascii_lowercase();
+            let effect = match name_lower.as_str() {
                 "breathing" => Effect::Breathing {
                     color: Color::PURPLE,
                     speed,
@@ -497,6 +512,7 @@ fn cmd_audio(action: AudioAction) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "sonar")]
 async fn cmd_sonar(action: SonarAction) -> anyhow::Result<()> {
     match action {
         SonarAction::Status => {
@@ -555,9 +571,10 @@ async fn cmd_sonar(action: SonarAction) -> anyhow::Result<()> {
 
         SonarAction::Volume { channel, level } => {
             let client = SonarClient::new().await?;
-            let volume = (level.min(100) as f32) / 100.0;
+            let volume = normalize_volume(level);
+            let channel_lower = channel.to_ascii_lowercase();
 
-            match channel.to_lowercase().as_str() {
+            match channel_lower.as_str() {
                 "master" => client.set_classic_master_volume(volume).await?,
                 "game" => client.set_classic_game_volume(volume).await?,
                 "chat" => client.set_classic_chat_volume(volume).await?,
@@ -585,9 +602,10 @@ async fn cmd_sonar(action: SonarAction) -> anyhow::Result<()> {
 
             match action {
                 StreamerAction::Monitoring { channel, level } => {
-                    let volume = (level.min(100) as f32) / 100.0;
+                    let volume = normalize_volume(level);
+                    let channel_lower = channel.to_ascii_lowercase();
 
-                    match channel.to_lowercase().as_str() {
+                    match channel_lower.as_str() {
                         "master" => client.set_monitoring_master_volume(volume).await?,
                         "game" => client.set_monitoring_game_volume(volume).await?,
                         "chat" => client.set_monitoring_chat_volume(volume).await?,
@@ -603,9 +621,10 @@ async fn cmd_sonar(action: SonarAction) -> anyhow::Result<()> {
                 }
 
                 StreamerAction::Streaming { channel, level } => {
-                    let volume = (level.min(100) as f32) / 100.0;
+                    let volume = normalize_volume(level);
+                    let channel_lower = channel.to_ascii_lowercase();
 
-                    match channel.to_lowercase().as_str() {
+                    match channel_lower.as_str() {
                         "master" => client.set_streaming_master_volume(volume).await?,
                         _ => {
                             return Err(anyhow::anyhow!(

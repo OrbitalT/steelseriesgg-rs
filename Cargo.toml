@@ -19,8 +19,8 @@ path = "src/main.rs"
 
 [features]
 default = []
-#audio = ["libpulse-binding"]
-#compat = ["gamesense", "steelseries-sonar"]
+audio = ["dep:libpulse-binding"]
+sonar = ["audio", "dep:steelseries-sonar"]
 
 [dependencies]
 anyhow = "1.0"

@@ -5,14 +5,18 @@
 //! - Per-application audio routing
 //! - Streamer mode with separate streaming/monitoring sliders
 
+#[cfg(feature = "sonar")]
 pub mod sonar;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::{Error, Result};
+
+#[cfg(feature = "sonar")]
 pub use sonar::SonarClient;
 
+#[cfg(feature = "audio")]
 /// Audio channel identifier.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Channel {
@@ -43,6 +47,7 @@ impl std::fmt::Display for Channel {
     }
 }
 
+#[cfg(feature = "audio")]
 /// Channel state.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ChannelState {
@@ -61,6 +66,7 @@ impl Default for ChannelState {
     }
 }
 
+#[cfg(feature = "audio")]
 /// Audio mixer state.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MixerState {
@@ -104,6 +110,7 @@ impl Default for MixerState {
     }
 }
 
+#[cfg(feature = "audio")]
 /// Audio mixer for controlling channel volumes.
 pub struct AudioMixer {
     state: MixerState,
@@ -286,6 +293,7 @@ impl AudioMixer {
     }
 }
 
+#[cfg(feature = "audio")]
 /// Application audio routing entry.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AppRoute {
@@ -299,6 +307,7 @@ pub struct AppRoute {
     pub volume_override: Option<f32>,
 }
 
+#[cfg(feature = "audio")]
 /// Audio router for per-application routing.
 pub struct AudioRouter {
     routes: Vec<AppRoute>,
