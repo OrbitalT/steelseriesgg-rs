@@ -12,7 +12,7 @@ use crate::{Result, STEELSERIES_VENDOR_ID};
 pub use discovery::DeviceManager;
 
 /// Type of SteelSeries device.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum DeviceType {
     Keyboard,
     Headset,
@@ -30,7 +30,7 @@ impl fmt::Display for DeviceType {
 }
 
 /// Information about a detected SteelSeries device.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DeviceInfo {
     /// Device name
     pub name: String,

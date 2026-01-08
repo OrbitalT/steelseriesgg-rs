@@ -9,7 +9,7 @@ use crate::rgb::{Color, Effect};
 use crate::{Error, Result};
 
 /// A device configuration profile.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Profile {
     /// Profile name.
     pub name: String,
@@ -27,7 +27,7 @@ pub struct Profile {
 }
 
 /// Keyboard-specific profile settings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct KeyboardProfile {
     /// RGB effect.
     pub effect: Effect,
@@ -48,7 +48,7 @@ impl Default for KeyboardProfile {
 }
 
 /// Headset-specific profile settings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct HeadsetProfile {
     /// Sidetone level (0-100).
     pub sidetone: u8,

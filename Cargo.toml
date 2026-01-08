@@ -9,14 +9,34 @@ edition = "2021"
 keywords = ["steelseries", "rgb", "gaming", "linux", "audio"]
 categories = ["hardware-support", "games"]
 
+[lib]
+name = "steelseries_gg"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ssgg"
+path = "src/main.rs"
+
+[features]
+default = []
+audio = ["libpulse-binding"]
+compat = ["gamesense", "steelseries-sonar"]
+
 [dependencies]
-hidapi = "=2.6.3" # Pinned to avoid build issues with 2.6.4 requiring libudev-dev
-# Async runtime
-tokio = { version = "1.49", features = ["rt-multi-thread", "macros"] }
+anyhow = "1.0"
 
 # HTTP server for GameSense API
 axum = "0.8"
-tower-http = { version = "0.6", features = ["cors"] }
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Configuration
+directories = "6.0"
+hidapi = "=2.6.3" # Pinned to avoid build issues with 2.6.4 requiring libudev-dev
+
+# HTTP client for Sonar API
+reqwest = { version = "0.12", features = ["json"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -24,41 +44,23 @@ serde_json = "1.0"
 
 # Error handling
 thiserror = "2.0"
-anyhow = "1.0"
+# Async runtime
+tokio = { version = "1.49", features = ["rt-multi-thread", "macros"] }
+toml = "0.9"
+tower-http = { version = "0.6", features = ["cors"] }
 
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# Configuration
-directories = "6.0"
-toml = "0.9"
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"
+opt-level = 3
+debug = 0
 
-# Audio (PipeWire/PulseAudio)
-libpulse-binding = { version = "2.28", optional = true }
-
-# CLI
-clap = { version = "4.5", features = ["derive"] }
-
-# Async utilities
-futures = "0.3"
-
-# HTTP client for Sonar API
-reqwest = { version = "0.12", features = ["json"] }
-
-# Optional: existing crate integrations (for compatibility)
-gamesense = { version = "0.1.2", optional = true }
-steelseries-sonar = { version = "0.1.0", optional = true }
-
-[features]
-default = []
-audio = ["libpulse-binding"]
-compat = ["gamesense", "steelseries-sonar"]
-
-[[bin]]
-name = "ssgg"
-path = "src/main.rs"
-
-[lib]
-name = "steelseries_gg"
-path = "src/lib.rs"
+[profile.dev]
+debug = 0
+split-debuginfo = "packed"

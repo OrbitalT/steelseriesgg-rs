@@ -30,7 +30,7 @@ pub trait Headset: Device {
 }
 
 /// Equalizer presets.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EqPreset {
     Flat,
     Bass,

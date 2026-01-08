@@ -63,7 +63,7 @@ impl std::ops::DerefMut for Apex3Tkl {
 }
 
 /// Zone mapping for Apex keyboards.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum ApexZone {
     /// Left side of keyboard
     Left = 0,

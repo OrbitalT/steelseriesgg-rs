@@ -14,7 +14,7 @@ use crate::{Error, Result};
 pub use sonar::SonarClient;
 
 /// Audio channel identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Channel {
     /// Master volume (affects all channels)
     Master,
@@ -44,7 +44,7 @@ impl std::fmt::Display for Channel {
 }
 
 /// Channel state.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ChannelState {
     /// Volume level (0.0 - 1.0)
     pub volume: f32,
@@ -62,7 +62,7 @@ impl Default for ChannelState {
 }
 
 /// Audio mixer state.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MixerState {
     /// Channel states
     pub channels: HashMap<Channel, ChannelState>,
@@ -287,7 +287,7 @@ impl AudioMixer {
 }
 
 /// Application audio routing entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AppRoute {
     /// Application name or executable.
     pub app_name: String,

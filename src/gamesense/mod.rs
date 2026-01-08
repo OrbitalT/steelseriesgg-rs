@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Game registration request.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct GameMetadata {
     /// Game identifier (uppercase, no spaces).
     pub game: String,
@@ -30,7 +30,7 @@ pub struct GameMetadata {
 }
 
 /// Game event data.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct GameEvent {
     /// Game identifier.
     pub game: String,
@@ -43,7 +43,7 @@ pub struct GameEvent {
 }
 
 /// Event data payload.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct EventData {
     /// Numeric value (0-100 typically).
     pub value: i32,
@@ -54,7 +54,7 @@ pub struct EventData {
 }
 
 /// Event handler binding.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct EventBinding {
     /// Game identifier.
     pub game: String,
@@ -83,7 +83,7 @@ fn default_max_value() -> i32 {
 }
 
 /// Event handler definition.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "device-type")]
 pub enum Handler {
     /// RGB zone handler.
@@ -122,7 +122,7 @@ pub enum Handler {
 }
 
 /// Color handler definition.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum ColorHandler {
     /// Static color.
@@ -136,14 +136,14 @@ pub enum ColorHandler {
 }
 
 /// Gradient specification.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct GradientSpec {
     pub zero: ColorSpec,
     pub hundred: ColorSpec,
 }
 
 /// Color specification.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ColorSpec {
     pub red: u8,
     pub green: u8,
@@ -151,7 +151,7 @@ pub struct ColorSpec {
 }
 
 /// Range-based color.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RangeColor {
     pub low: i32,
     pub high: i32,
@@ -159,7 +159,7 @@ pub struct RangeColor {
 }
 
 /// Screen data for OLED display.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ScreenData {
     /// Line number (0-indexed).
     pub line: u8,
@@ -178,21 +178,21 @@ pub struct ScreenData {
 }
 
 /// Heartbeat request.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Heartbeat {
     /// Game identifier.
     pub game: String,
 }
 
 /// Remove game request.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RemoveGame {
     /// Game identifier.
     pub game: String,
 }
 
 /// Remove event request.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RemoveEvent {
     /// Game identifier.
     pub game: String,
@@ -202,7 +202,7 @@ pub struct RemoveEvent {
 }
 
 /// API response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ApiResponse {
     /// Whether the request succeeded.
     #[serde(skip_serializing_if = "Option::is_none")]

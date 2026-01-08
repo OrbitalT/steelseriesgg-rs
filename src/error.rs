@@ -6,7 +6,7 @@ use thiserror::Error;
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Main error type for SteelSeries GG operations.
-#[derive(Error, Debug)]
+#[derive(Debug, Error)]
 pub enum Error {
     /// HID API initialization or communication error
     #[error("HID error: {0}")]

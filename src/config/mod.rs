@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use crate::Result;
 
 /// Application configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Config {
     /// GameSense server settings
     pub gamesense: GameSenseConfig,
@@ -24,7 +24,7 @@ pub struct Config {
 }
 
 /// GameSense server configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct GameSenseConfig {
     /// Enable GameSense HTTP server
     pub enabled: bool,
@@ -47,7 +47,7 @@ impl Default for GameSenseConfig {
 }
 
 /// Audio mixer configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[cfg(feature = "audio")]
 pub struct AudioConfig {
     /// Enable audio mixer
@@ -72,7 +72,7 @@ impl Default for AudioConfig {
 }
 
 /// Individual channel volume settings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[cfg(feature = "audio")]
 pub struct ChannelVolumes {
     pub game: f32,

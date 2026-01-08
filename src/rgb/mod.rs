@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
 /// RGB color representation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Color {
     pub r: u8,
     pub g: u8,
@@ -119,7 +119,7 @@ impl std::fmt::Display for Color {
 }
 
 /// RGB lighting effect types.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Effect {
     /// Static single color.
     Static { color: Color },
@@ -159,7 +159,7 @@ pub enum Effect {
 }
 
 /// Wave effect direction.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub enum WaveDirection {
     LeftToRight,
     RightToLeft,

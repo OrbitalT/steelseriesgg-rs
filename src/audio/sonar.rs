@@ -17,7 +17,7 @@ pub struct SonarClient {
 }
 
 /// Audio device information
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AudioDevice {
     pub id: String,
     pub name: String,
@@ -26,7 +26,7 @@ pub struct AudioDevice {
 }
 
 /// Audio configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AudioConfig {
     pub id: String,
     pub name: String,
@@ -34,7 +34,7 @@ pub struct AudioConfig {
 }
 
 /// Volume settings for classic mode
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ClassicVolume {
     pub master: f32,
     pub game: f32,
@@ -44,14 +44,14 @@ pub struct ClassicVolume {
 }
 
 /// Volume settings for streamer mode
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StreamerVolume {
     pub monitoring: ChannelVolumes,
     pub streaming: ChannelVolumes,
 }
 
 /// Individual channel volumes
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ChannelVolumes {
     pub master: f32,
     pub game: f32,
@@ -63,13 +63,13 @@ pub struct ChannelVolumes {
 }
 
 /// Chat mix settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ChatMix {
     pub value: f32,
 }
 
 /// Sonar operational mode
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SonarMode {
     Classic,
@@ -77,7 +77,7 @@ pub enum SonarMode {
 }
 
 /// Stream redirection configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StreamRedirection {
     pub game: bool,
     pub chat: bool,

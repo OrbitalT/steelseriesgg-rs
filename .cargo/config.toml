@@ -1,0 +1,3 @@
+[build]
+rustflags = ["-Ctarget-cpu=native", "-Clink-arg=-fuse-ld=lld", "-Zthreads=16"]
+rustc-wrapper = "sccache"
