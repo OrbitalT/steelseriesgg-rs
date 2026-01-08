@@ -8,6 +8,7 @@ use crate::Result;
 
 /// Application configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct Config {
     /// GameSense server settings
     pub gamesense: GameSenseConfig,
@@ -23,17 +24,6 @@ pub struct Config {
     pub debug: bool,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            gamesense: GameSenseConfig::default(),
-            #[cfg(feature = "audio")]
-            audio: AudioConfig::default(),
-            default_profile: None,
-            debug: false,
-        }
-    }
-}
 
 /// GameSense server configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]

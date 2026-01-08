@@ -17,6 +17,7 @@ use super::*;
 use crate::{Error, Result};
 
 /// Shared server state.
+#[derive(Default)]
 pub struct ServerState {
     /// Registered games.
     pub games: HashMap<String, GameMetadata>,
@@ -31,16 +32,6 @@ pub struct ServerState {
     pub rgb_callback: Option<Box<dyn Fn(&str, u8, u8, u8) + Send + Sync>>,
 }
 
-impl Default for ServerState {
-    fn default() -> Self {
-        Self {
-            games: HashMap::new(),
-            bindings: HashMap::new(),
-            event_values: HashMap::new(),
-            rgb_callback: None,
-        }
-    }
-}
 
 /// GameSense-compatible HTTP server.
 pub struct GameSenseServer {
