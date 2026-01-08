@@ -16,6 +16,9 @@ use tracing::{debug, info};
 use super::*;
 use crate::{Error, Result};
 
+/// Type alias for RGB callback functions.
+pub type RgbCallback = Box<dyn Fn(&str, u8, u8, u8) + Send + Sync>;
+
 /// Shared server state.
 #[derive(Default)]
 pub struct ServerState {
@@ -29,7 +32,7 @@ pub struct ServerState {
     pub event_values: HashMap<String, HashMap<String, i32>>,
 
     /// Callback for RGB updates.
-    pub rgb_callback: Option<Box<dyn Fn(&str, u8, u8, u8) + Send + Sync>>,
+    pub rgb_callback: Option<RgbCallback>,
 }
 
 

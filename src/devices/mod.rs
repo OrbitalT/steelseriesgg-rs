@@ -12,7 +12,7 @@ use crate::{Result, STEELSERIES_VENDOR_ID};
 pub use discovery::DeviceManager;
 
 /// Type of SteelSeries device.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum DeviceType {
     Keyboard,
     Headset,

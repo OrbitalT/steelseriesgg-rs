@@ -201,25 +201,15 @@ async fn main() -> anyhow::Result<()> {
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
-    // Create DeviceManager once for all commands that need it
-    let needs_device_manager = matches!(
-        cli.command,
-        Commands::Devices | Commands::Rgb { .. } | Commands::Daemon
-    );
-
-    let manager = if needs_device_manager {
-        Some(DeviceManager::new()?)
-    } else {
-        None
-    };
-
     match cli.command {
         Commands::Devices => {
-            cmd_devices(manager.as_ref().unwrap())?;
+            let manager = DeviceManager::new()?;
+            cmd_devices(&manager)?;
         }
 
         Commands::Rgb { action } => {
-            cmd_rgb(manager.as_ref().unwrap(), action)?;
+            let manager = DeviceManager::new()?;
+            cmd_rgb(&manager, action)?;
         }
 
         Commands::Profile { action } => {
@@ -236,7 +226,8 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Commands::Daemon => {
-            cmd_daemon(manager.unwrap()).await?;
+            let manager = DeviceManager::new()?;
+            cmd_daemon(manager).await?;
         }
     }
 
@@ -452,20 +443,28 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
 
     let config = Config::load()?;
 
-    // Start GameSense server in background
-    let gs_port = config.gamesense.port;
-    tokio::spawn(async move {
-        match GameSenseServer::new("127.0.0.1", gs_port) {
-            Ok(server) => {
-                if let Err(e) = server.run().await {
-                    tracing::error!("GameSense server error: {}", e);
+    // Start GameSense server in background if enabled
+    if config.gamesense.enabled {
+        let gs_bind = config.gamesense.bind_address.clone();
+        let gs_port = config.gamesense.port;
+        tokio::spawn(async move {
+            match GameSenseServer::new(&gs_bind, gs_port) {
+                Ok(server) => {
+                    if let Err(e) = server.run().await {
+                        tracing::error!("GameSense server error: {}", e);
+                    }
                 }
+                Err(e) => tracing::error!("Failed to create GameSense server: {}", e),
             }
-            Err(e) => tracing::error!("Failed to create GameSense server: {}", e),
-        }
-    });
+        });
 
-    info!("GameSense server started on port {}", config.gamesense.port);
+        info!(
+            "GameSense server started on {}:{}",
+            config.gamesense.bind_address, config.gamesense.port
+        );
+    } else {
+        info!("GameSense server disabled in config");
+    }
 
     // Use provided device manager
     print_device_summary(&manager);

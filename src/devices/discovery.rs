@@ -152,20 +152,22 @@ impl DeviceManager {
     }
 }
 
-impl Default for DeviceManager {
-    fn default() -> Self {
-        Self::new().expect("Failed to initialize HID API")
-    }
-}
-
 /// Print a summary of connected devices.
 pub fn print_device_summary(manager: &DeviceManager) {
-    let devices = manager.devices();
+    let mut devices = manager.devices();
 
     if devices.is_empty() {
         println!("No SteelSeries devices found.");
         return;
     }
+
+    // Sort for stable output: by type, then name, then interface
+    devices.sort_by(|a, b| {
+        a.device_type
+            .cmp(&b.device_type)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.interface_number.cmp(&b.interface_number))
+    });
 
     println!("Found {} SteelSeries device(s):\n", devices.len());
 

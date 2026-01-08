@@ -283,12 +283,6 @@ impl AudioMixer {
     }
 }
 
-impl Default for AudioMixer {
-    fn default() -> Self {
-        Self::new().expect("Failed to create audio mixer")
-    }
-}
-
 /// Application audio routing entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppRoute {
