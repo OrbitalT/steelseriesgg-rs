@@ -1,8 +1,8 @@
 //! Apex keyboard specific implementations.
 
+use super::{GenericKeyboard, Keyboard};
 use crate::rgb::Color;
 use crate::{Error, Result};
-use super::{GenericKeyboard, Keyboard};
 
 /// Apex 3 TKL specific implementation.
 pub struct Apex3Tkl {
@@ -35,8 +35,12 @@ impl Apex3Tkl {
     pub fn set_color_shift(&mut self, color1: Color, color2: Color, speed: u8) -> Result<()> {
         let data = [
             0x26, // Color shift command
-            color1.r, color1.g, color1.b,
-            color2.r, color2.g, color2.b,
+            color1.r,
+            color1.g,
+            color1.b,
+            color2.r,
+            color2.g,
+            color2.b,
             speed.min(100),
         ];
         self.inner.send_raw(&data)

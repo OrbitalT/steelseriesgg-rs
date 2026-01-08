@@ -277,7 +277,11 @@ impl EffectEngine {
                         let next_index = (color_index + 1) % colors.len();
                         let blend_t = (t * colors.len() as f32) % 1.0;
 
-                        self.cached_colors.push(Color::blend(colors[color_index], colors[next_index], blend_t));
+                        self.cached_colors.push(Color::blend(
+                            colors[color_index],
+                            colors[next_index],
+                            blend_t,
+                        ));
                     }
                 }
             }

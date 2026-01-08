@@ -1,8 +1,8 @@
 //! Headset device support (Arctis series).
 
-use hidapi::HidDevice;
-use crate::{Error, Result};
 use super::{Device, DeviceInfo, DeviceType};
+use crate::{Error, Result};
+use hidapi::HidDevice;
 
 /// Trait for headset-specific functionality.
 pub trait Headset: Device {

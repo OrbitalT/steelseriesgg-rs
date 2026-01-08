@@ -22,8 +22,16 @@ pub fn health_bar_handler(zone: &str) -> Handler {
         zone: zone.to_string(),
         color: ColorHandler::Gradient {
             gradient: GradientSpec {
-                zero: ColorSpec { red: 255, green: 0, blue: 0 },
-                hundred: ColorSpec { red: 0, green: 255, blue: 0 },
+                zero: ColorSpec {
+                    red: 255,
+                    green: 0,
+                    blue: 0,
+                },
+                hundred: ColorSpec {
+                    red: 0,
+                    green: 255,
+                    blue: 0,
+                },
             },
         },
         mode: None,
@@ -36,8 +44,16 @@ pub fn ammo_handler(zone: &str) -> Handler {
         zone: zone.to_string(),
         color: ColorHandler::Gradient {
             gradient: GradientSpec {
-                zero: ColorSpec { red: 255, green: 200, blue: 0 },
-                hundred: ColorSpec { red: 255, green: 255, blue: 255 },
+                zero: ColorSpec {
+                    red: 255,
+                    green: 200,
+                    blue: 0,
+                },
+                hundred: ColorSpec {
+                    red: 255,
+                    green: 255,
+                    blue: 255,
+                },
             },
         },
         mode: None,
@@ -53,22 +69,38 @@ pub fn cooldown_handler(zone: &str) -> Handler {
                 RangeColor {
                     low: 0,
                     high: 25,
-                    color: ColorSpec { red: 255, green: 0, blue: 0 },
+                    color: ColorSpec {
+                        red: 255,
+                        green: 0,
+                        blue: 0,
+                    },
                 },
                 RangeColor {
                     low: 26,
                     high: 50,
-                    color: ColorSpec { red: 255, green: 128, blue: 0 },
+                    color: ColorSpec {
+                        red: 255,
+                        green: 128,
+                        blue: 0,
+                    },
                 },
                 RangeColor {
                     low: 51,
                     high: 75,
-                    color: ColorSpec { red: 255, green: 255, blue: 0 },
+                    color: ColorSpec {
+                        red: 255,
+                        green: 255,
+                        blue: 0,
+                    },
                 },
                 RangeColor {
                     low: 76,
                     high: 100,
-                    color: ColorSpec { red: 0, green: 255, blue: 0 },
+                    color: ColorSpec {
+                        red: 0,
+                        green: 255,
+                        blue: 0,
+                    },
                 },
             ],
         },
@@ -136,8 +168,16 @@ pub mod presets {
                     zone: zones::NUMBER_KEYS.to_string(),
                     color: ColorHandler::Gradient {
                         gradient: GradientSpec {
-                            zero: ColorSpec { red: 0, green: 0, blue: 100 },
-                            hundred: ColorSpec { red: 0, green: 100, blue: 255 },
+                            zero: ColorSpec {
+                                red: 0,
+                                green: 0,
+                                blue: 100,
+                            },
+                            hundred: ColorSpec {
+                                red: 0,
+                                green: 100,
+                                blue: 255,
+                            },
                         },
                     },
                     mode: None,

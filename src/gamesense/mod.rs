@@ -3,11 +3,11 @@
 //! Implements a compatible GameSense API that games can connect to
 //! for reactive RGB lighting and device feedback.
 
-mod server;
 mod handlers;
+mod server;
 
-pub use server::GameSenseServer;
 pub use handlers::*;
+pub use server::GameSenseServer;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -129,9 +129,7 @@ pub enum ColorHandler {
     Static { red: u8, green: u8, blue: u8 },
 
     /// Gradient between two colors.
-    Gradient {
-        gradient: GradientSpec,
-    },
+    Gradient { gradient: GradientSpec },
 
     /// Range-based color selection.
     Range { color: Vec<RangeColor> },

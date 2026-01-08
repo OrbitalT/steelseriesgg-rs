@@ -199,16 +199,28 @@ impl AudioMixer {
             // Values will be populated on first access via or_default()
             // This avoids unnecessary HashMap cloning
             if self.state.streaming.is_empty() {
-                for &channel in &[Channel::Master, Channel::Game, Channel::Chat,
-                                  Channel::Media, Channel::Aux, Channel::Mic] {
+                for &channel in &[
+                    Channel::Master,
+                    Channel::Game,
+                    Channel::Chat,
+                    Channel::Media,
+                    Channel::Aux,
+                    Channel::Mic,
+                ] {
                     if let Some(channel_state) = self.state.channels.get(&channel) {
                         self.state.streaming.insert(channel, channel_state.clone());
                     }
                 }
             }
             if self.state.monitoring.is_empty() {
-                for &channel in &[Channel::Master, Channel::Game, Channel::Chat,
-                                  Channel::Media, Channel::Aux, Channel::Mic] {
+                for &channel in &[
+                    Channel::Master,
+                    Channel::Game,
+                    Channel::Chat,
+                    Channel::Media,
+                    Channel::Aux,
+                    Channel::Mic,
+                ] {
                     if let Some(channel_state) = self.state.channels.get(&channel) {
                         self.state.monitoring.insert(channel, channel_state.clone());
                     }
@@ -236,11 +248,7 @@ impl AudioMixer {
         }
 
         let volume = volume.clamp(0.0, 1.0);
-        self.state
-            .streaming
-            .entry(channel)
-            .or_default()
-            .volume = volume;
+        self.state.streaming.entry(channel).or_default().volume = volume;
 
         Ok(())
     }
@@ -252,11 +260,7 @@ impl AudioMixer {
         }
 
         let volume = volume.clamp(0.0, 1.0);
-        self.state
-            .monitoring
-            .entry(channel)
-            .or_default()
-            .volume = volume;
+        self.state.monitoring.entry(channel).or_default().volume = volume;
 
         Ok(())
     }

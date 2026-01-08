@@ -64,7 +64,11 @@ impl DeviceManager {
             );
 
             // Cache the device path for fast lookup
-            let cache_key = (device.vendor_id(), device.product_id(), device.interface_number());
+            let cache_key = (
+                device.vendor_id(),
+                device.product_id(),
+                device.interface_number(),
+            );
             self.device_cache.insert(cache_key, path.clone());
 
             self.devices.insert(path, info);
@@ -164,12 +168,7 @@ pub fn print_device_summary(manager: &DeviceManager) {
     println!("Found {} SteelSeries device(s):\n", devices.len());
 
     for (i, device) in devices.iter().enumerate() {
-        println!(
-            "  {}. {} [{}]",
-            i + 1,
-            device.name,
-            device.device_type
-        );
+        println!("  {}. {} [{}]", i + 1, device.name, device.device_type);
         println!(
             "     VID: {:#06x}, PID: {:#06x}, Interface: {}",
             device.vendor_id, device.product_id, device.interface_number

@@ -2,10 +2,10 @@
 
 pub mod apex;
 
-use hidapi::HidDevice;
-use crate::{Error, Result};
-use crate::rgb::Color;
 use super::{Device, DeviceInfo, DeviceType};
+use crate::rgb::Color;
+use crate::{Error, Result};
+use hidapi::HidDevice;
 
 /// Trait for keyboard-specific functionality.
 pub trait Keyboard: Device {

@@ -1,8 +1,8 @@
 //! Device discovery and management for SteelSeries peripherals.
 
 pub mod discovery;
-pub mod keyboards;
 pub mod headsets;
+pub mod keyboards;
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -126,9 +126,19 @@ pub fn device_type_from_product_id(product_id: u16) -> DeviceType {
         | APEX_7_TKL => DeviceType::Keyboard,
 
         // Headsets
-        ARCTIS_1 | ARCTIS_1_WIRELESS | ARCTIS_5 | ARCTIS_7 | ARCTIS_7_2019 | ARCTIS_9
-        | ARCTIS_PRO | ARCTIS_PRO_WIRELESS | ARCTIS_NOVA_PRO | ARCTIS_NOVA_PRO_WIRELESS
-        | ARCTIS_NOVA_5 | ARCTIS_NOVA_3 | ARCTIS_NOVA_1 => DeviceType::Headset,
+        ARCTIS_1
+        | ARCTIS_1_WIRELESS
+        | ARCTIS_5
+        | ARCTIS_7
+        | ARCTIS_7_2019
+        | ARCTIS_9
+        | ARCTIS_PRO
+        | ARCTIS_PRO_WIRELESS
+        | ARCTIS_NOVA_PRO
+        | ARCTIS_NOVA_PRO_WIRELESS
+        | ARCTIS_NOVA_5
+        | ARCTIS_NOVA_3
+        | ARCTIS_NOVA_1 => DeviceType::Headset,
 
         _ => DeviceType::Unknown,
     }

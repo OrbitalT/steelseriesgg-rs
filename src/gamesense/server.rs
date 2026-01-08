@@ -123,7 +123,9 @@ impl GameSenseServer {
         };
 
         #[cfg(target_os = "macos")]
-        let path = std::path::Path::new("/Library/Application Support/SteelSeries Engine 3/coreProps.json");
+        let path = std::path::Path::new(
+            "/Library/Application Support/SteelSeries Engine 3/coreProps.json",
+        );
 
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -160,7 +162,10 @@ async fn register_game(
 ) -> (StatusCode, Json<ApiResponse>) {
     let mut state = state.write().await;
 
-    info!("Registering game: {} ({})", metadata.game_display_name, metadata.game);
+    info!(
+        "Registering game: {} ({})",
+        metadata.game_display_name, metadata.game
+    );
 
     state.games.insert(metadata.game.clone(), metadata);
 
@@ -196,7 +201,10 @@ async fn game_event(
     State(state): State<AppState>,
     Json(event): Json<GameEvent>,
 ) -> (StatusCode, Json<ApiResponse>) {
-    debug!("Game event: {}:{} = {}", event.game, event.event, event.data.value);
+    debug!(
+        "Game event: {}:{} = {}",
+        event.game, event.event, event.data.value
+    );
 
     // Store the event value with write lock (brief critical section)
     {
@@ -225,8 +233,7 @@ async fn game_event(
 /// Process a handler with the given value.
 fn process_handler(handler: &Handler, value: i32, state: &ServerState) {
     match handler {
-        Handler::RgbPerKeyZones { zone, color, .. }
-        | Handler::Keyboard { zone, color, .. } => {
+        Handler::RgbPerKeyZones { zone, color, .. } | Handler::Keyboard { zone, color, .. } => {
             if let Some((r, g, b)) = compute_color(color, value) {
                 debug!("Setting {} to RGB({}, {}, {})", zone, r, g, b);
                 if let Some(ref callback) = state.rgb_callback {
@@ -251,8 +258,10 @@ fn compute_color(color: &ColorHandler, value: i32) -> Option<(u8, u8, u8)> {
         ColorHandler::Gradient { gradient } => {
             let t = (value as f32 / 100.0).clamp(0.0, 1.0);
             let r = (gradient.zero.red as f32 * (1.0 - t) + gradient.hundred.red as f32 * t) as u8;
-            let g = (gradient.zero.green as f32 * (1.0 - t) + gradient.hundred.green as f32 * t) as u8;
-            let b = (gradient.zero.blue as f32 * (1.0 - t) + gradient.hundred.blue as f32 * t) as u8;
+            let g =
+                (gradient.zero.green as f32 * (1.0 - t) + gradient.hundred.green as f32 * t) as u8;
+            let b =
+                (gradient.zero.blue as f32 * (1.0 - t) + gradient.hundred.blue as f32 * t) as u8;
             Some((r, g, b))
         }
 

@@ -110,7 +110,8 @@ impl Default for ChannelVolumes {
 impl Config {
     /// Get the configuration directory path.
     pub fn config_dir() -> Option<PathBuf> {
-        ProjectDirs::from("com", "steelseries-gg", "ssgg").map(|dirs| dirs.config_dir().to_path_buf())
+        ProjectDirs::from("com", "steelseries-gg", "ssgg")
+            .map(|dirs| dirs.config_dir().to_path_buf())
     }
 
     /// Get the config file path.

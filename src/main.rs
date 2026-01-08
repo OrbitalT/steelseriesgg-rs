@@ -7,11 +7,11 @@ use std::time::Duration;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-use steelseries_gg::devices::{discovery::print_device_summary, DeviceManager, DeviceType};
-use steelseries_gg::rgb::{Color, Effect, WaveDirection};
-use steelseries_gg::gamesense::GameSenseServer;
 use steelseries_gg::config::Config;
+use steelseries_gg::devices::{discovery::print_device_summary, DeviceManager, DeviceType};
+use steelseries_gg::gamesense::GameSenseServer;
 use steelseries_gg::profiles::{Profile, ProfileManager};
+use steelseries_gg::rgb::{Color, Effect, WaveDirection};
 
 #[cfg(feature = "audio")]
 use steelseries_gg::audio::{AudioMixer, Channel};
@@ -261,8 +261,8 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
 
     match action {
         RgbAction::Color { color } => {
-            let color = parse_color(&color)
-                .ok_or_else(|| anyhow::anyhow!("Invalid color: {}", color))?;
+            let color =
+                parse_color(&color).ok_or_else(|| anyhow::anyhow!("Invalid color: {}", color))?;
 
             println!("Setting color to {}", color);
 
@@ -302,12 +302,22 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
                 },
                 "spectrum" => Effect::Spectrum { speed },
                 "wave" => Effect::Wave {
-                    colors: vec![Color::RED, Color::ORANGE, Color::YELLOW, Color::GREEN, Color::CYAN, Color::BLUE, Color::PURPLE],
+                    colors: vec![
+                        Color::RED,
+                        Color::ORANGE,
+                        Color::YELLOW,
+                        Color::GREEN,
+                        Color::CYAN,
+                        Color::BLUE,
+                        Color::PURPLE,
+                    ],
                     speed,
                     direction: WaveDirection::LeftToRight,
                 },
                 "off" => Effect::Off,
-                _ => Effect::Static { color: Color::WHITE },
+                _ => Effect::Static {
+                    color: Color::WHITE,
+                },
             };
 
             println!("Setting effect: {:?}", effect);
