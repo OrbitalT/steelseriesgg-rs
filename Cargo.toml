@@ -48,7 +48,7 @@ gamesense = { version = "0.1.2", optional = true }
 steelseries-sonar = { version = "0.1.0", optional = true }
 
 [features]
-default = ["audio"]
+default = []
 audio = ["libpulse-binding"]
 compat = ["gamesense", "steelseries-sonar"]
 

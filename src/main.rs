@@ -257,7 +257,7 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
     println!("Using keyboard: {}", keyboard_info.name);
 
     // Open the device
-    let mut device = manager.open_device(keyboard_info)?;
+    let device = manager.open_device(keyboard_info)?;
 
     match action {
         RgbAction::Color { color } => {
@@ -441,7 +441,7 @@ fn cmd_audio(action: AudioAction) -> anyhow::Result<()> {
 async fn cmd_server(port: u16) -> anyhow::Result<()> {
     info!("Starting GameSense server on port {}", port);
 
-    let server = GameSenseServer::new("127.0.0.1", port);
+    let server = GameSenseServer::new("127.0.0.1", port)?;
     server.run().await?;
 
     Ok(())
@@ -455,9 +455,13 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
     // Start GameSense server in background
     let gs_port = config.gamesense.port;
     tokio::spawn(async move {
-        let server = GameSenseServer::new("127.0.0.1", gs_port);
-        if let Err(e) = server.run().await {
-            tracing::error!("GameSense server error: {}", e);
+        match GameSenseServer::new("127.0.0.1", gs_port) {
+            Ok(server) => {
+                if let Err(e) = server.run().await {
+                    tracing::error!("GameSense server error: {}", e);
+                }
+            }
+            Err(e) => tracing::error!("Failed to create GameSense server: {}", e),
         }
     });
 

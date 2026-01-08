@@ -6,6 +6,7 @@ use super::{Device, DeviceInfo, DeviceType};
 use crate::rgb::Color;
 use crate::{Error, Result};
 use hidapi::HidDevice;
+use std::sync::{Arc, Mutex};
 
 /// Trait for keyboard-specific functionality.
 pub trait Keyboard: Device {
@@ -28,7 +29,7 @@ pub trait Keyboard: Device {
 /// Generic SteelSeries keyboard implementation.
 pub struct GenericKeyboard {
     info: DeviceInfo,
-    device: Option<HidDevice>,
+    device: Option<Arc<Mutex<HidDevice>>>,
     zone_count: usize,
 }
 
@@ -44,16 +45,17 @@ impl GenericKeyboard {
 
         Self {
             info,
-            device: Some(device),
+            device: Some(Arc::new(Mutex::new(device))),
             zone_count,
         }
     }
 
     /// Send a HID report to the keyboard.
     fn send_report(&mut self, data: &[u8]) -> Result<()> {
-        let device = self.device.as_mut().ok_or(Error::DeviceCommunication(
+        let device = self.device.as_ref().ok_or(Error::DeviceCommunication(
             "Device not connected".to_string(),
         ))?;
+        let device = device.lock().unwrap();
 
         // Pad to 64 bytes with leading 0x00 for report ID
         let mut report = vec![0u8; 65];
@@ -92,9 +94,10 @@ impl Device for GenericKeyboard {
     }
 
     fn receive_raw(&mut self, buf: &mut [u8]) -> Result<usize> {
-        let device = self.device.as_mut().ok_or(Error::DeviceCommunication(
+        let device = self.device.as_ref().ok_or(Error::DeviceCommunication(
             "Device not connected".to_string(),
         ))?;
+        let device = device.lock().unwrap();
 
         let len = device.read(buf)?;
         Ok(len)

@@ -11,10 +11,10 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use super::*;
-use crate::Result;
+use crate::{Error, Result};
 
 /// Shared server state.
 pub struct ServerState {
@@ -54,10 +54,10 @@ impl GameSenseServer {
             .parse()
             .map_err(|e| Error::GameSense(format!("Invalid bind address: {}", e)))?;
 
-        Self {
+        Ok(Self {
             state: Arc::new(RwLock::new(ServerState::default())),
             bind_addr: addr,
-        }
+        })
     }
 
     /// Set a callback for RGB color changes.

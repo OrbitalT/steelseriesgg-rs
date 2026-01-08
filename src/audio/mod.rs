@@ -176,8 +176,8 @@ impl AudioMixer {
         self.state.chat_mix = balance.clamp(-1.0, 1.0);
 
         // Adjust game and chat volumes based on chat mix
-        let game_factor = if balance < 0.0 { 1.0 } else { 1.0 - balance };
-        let chat_factor = if balance > 0.0 { 1.0 } else { 1.0 + balance };
+        let _game_factor = if balance < 0.0 { 1.0 } else { 1.0 - balance };
+        let _chat_factor = if balance > 0.0 { 1.0 } else { 1.0 + balance };
 
         // Apply to actual audio system
         // (Implementation would modify PulseAudio sink inputs)

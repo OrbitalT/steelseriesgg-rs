@@ -2,8 +2,7 @@
 
 use hidapi::HidApi;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use super::{device_name_from_product_id, device_type_from_product_id, DeviceInfo, DeviceType};
 use crate::{Error, Result, STEELSERIES_VENDOR_ID};
@@ -124,8 +123,11 @@ impl DeviceManager {
         // Use cache for O(1) lookup instead of O(n) iteration
         let cache_key = (info.vendor_id, info.product_id, control_interface);
         if let Some(path) = self.device_cache.get(&cache_key) {
-            // Try to open by path directly
-            return self.api.open_path(path).map_err(Error::from);
+            // Try to open by path directly - convert String to CStr
+            use std::ffi::CString;
+            let c_path = CString::new(path.as_str())
+                .map_err(|e| Error::DeviceCommunication(format!("Invalid device path: {}", e)))?;
+            return self.api.open_path(&c_path).map_err(Error::from);
         }
 
         // Fallback to iteration if not in cache (shouldn't happen after refresh)

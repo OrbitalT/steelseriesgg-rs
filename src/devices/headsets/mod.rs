@@ -3,6 +3,7 @@
 use super::{Device, DeviceInfo, DeviceType};
 use crate::{Error, Result};
 use hidapi::HidDevice;
+use std::sync::{Arc, Mutex};
 
 /// Trait for headset-specific functionality.
 pub trait Headset: Device {
@@ -41,7 +42,7 @@ pub enum EqPreset {
 /// Generic SteelSeries headset implementation.
 pub struct GenericHeadset {
     info: DeviceInfo,
-    device: Option<HidDevice>,
+    device: Option<Arc<Mutex<HidDevice>>>,
 }
 
 impl GenericHeadset {
@@ -49,15 +50,16 @@ impl GenericHeadset {
     pub fn new(info: DeviceInfo, device: HidDevice) -> Self {
         Self {
             info,
-            device: Some(device),
+            device: Some(Arc::new(Mutex::new(device))),
         }
     }
 
     /// Send a HID report to the headset.
     fn send_report(&mut self, data: &[u8]) -> Result<()> {
-        let device = self.device.as_mut().ok_or(Error::DeviceCommunication(
+        let device = self.device.as_ref().ok_or(Error::DeviceCommunication(
             "Device not connected".to_string(),
         ))?;
+        let device = device.lock().unwrap();
 
         let mut report = vec![0u8; 64];
         report[..data.len().min(64)].copy_from_slice(&data[..data.len().min(64)]);
@@ -68,9 +70,10 @@ impl GenericHeadset {
 
     /// Receive a HID report from the headset.
     fn receive_report(&mut self, buf: &mut [u8]) -> Result<usize> {
-        let device = self.device.as_mut().ok_or(Error::DeviceCommunication(
+        let device = self.device.as_ref().ok_or(Error::DeviceCommunication(
             "Device not connected".to_string(),
         ))?;
+        let device = device.lock().unwrap();
 
         let len = device.read_timeout(buf, 1000)?;
         Ok(len)

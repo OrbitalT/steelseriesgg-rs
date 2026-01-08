@@ -1,8 +1,9 @@
 //! Apex keyboard specific implementations.
 
-use super::{GenericKeyboard, Keyboard};
+use super::GenericKeyboard;
+use crate::devices::Device;
 use crate::rgb::Color;
-use crate::{Error, Result};
+use crate::Result;
 
 /// Apex 3 TKL specific implementation.
 pub struct Apex3Tkl {

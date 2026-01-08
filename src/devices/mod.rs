@@ -7,7 +7,7 @@ pub mod keyboards;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::{Error, Result, STEELSERIES_VENDOR_ID};
+use crate::{Result, STEELSERIES_VENDOR_ID};
 
 pub use discovery::DeviceManager;
 
@@ -101,10 +101,9 @@ pub mod product_ids {
     pub const APEX_7_TKL: u16 = 0x1616;
 
     // Headsets - Arctis Series
-    pub const ARCTIS_1: u16 = 0x12AD;
+    pub const ARCTIS_1: u16 = 0x12AD; // Note: ARCTIS_7 (2017) also uses this ID
     pub const ARCTIS_1_WIRELESS: u16 = 0x12B3;
     pub const ARCTIS_5: u16 = 0x12AA;
-    pub const ARCTIS_7: u16 = 0x12AD;
     pub const ARCTIS_7_2019: u16 = 0x12CF;
     pub const ARCTIS_9: u16 = 0x12C2;
     pub const ARCTIS_PRO: u16 = 0x1252;
@@ -126,10 +125,9 @@ pub fn device_type_from_product_id(product_id: u16) -> DeviceType {
         | APEX_7_TKL => DeviceType::Keyboard,
 
         // Headsets
-        ARCTIS_1
+        ARCTIS_1  // Note: This ID covers ARCTIS_1 and ARCTIS_7 (2017)
         | ARCTIS_1_WIRELESS
         | ARCTIS_5
-        | ARCTIS_7
         | ARCTIS_7_2019
         | ARCTIS_9
         | ARCTIS_PRO
@@ -157,10 +155,9 @@ pub fn device_name_from_product_id(product_id: u16) -> &'static str {
         APEX_5 => "Apex 5",
         APEX_7 => "Apex 7",
         APEX_7_TKL => "Apex 7 TKL",
-        ARCTIS_1 => "Arctis 1",
+        ARCTIS_1 => "Arctis 1 / Arctis 7 (2017)",
         ARCTIS_1_WIRELESS => "Arctis 1 Wireless",
         ARCTIS_5 => "Arctis 5",
-        ARCTIS_7 => "Arctis 7",
         ARCTIS_7_2019 => "Arctis 7 (2019)",
         ARCTIS_9 => "Arctis 9",
         ARCTIS_PRO => "Arctis Pro",
