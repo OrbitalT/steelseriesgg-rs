@@ -13,6 +13,7 @@ max_line_length = 120
 [**.{rs,zig}]
 indent_style = space
 indent_size = 4
+max_line_length = 100
 
 [{Makefile,**.mk,.gitmodules}]
 indent_style = tab
