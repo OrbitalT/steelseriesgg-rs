@@ -159,7 +159,7 @@ pub enum Effect {
 }
 
 /// Wave effect direction.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum WaveDirection {
     LeftToRight,
     RightToLeft,
@@ -329,6 +329,9 @@ pub struct RgbController {
     engine: EffectEngine,
     brightness: f32,
 }
+
+#[cfg(test)]
+mod tests;
 
 impl RgbController {
     /// Create a new RGB controller.

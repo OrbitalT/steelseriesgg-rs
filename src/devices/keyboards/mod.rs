@@ -2,7 +2,7 @@
 
 pub mod apex;
 
-use super::{zone_count_for_product_id, Device, DeviceInfo, DeviceType};
+use super::{write_padded_report, zone_count_for_product_id, Device, DeviceInfo, DeviceType};
 use crate::rgb::Color;
 use crate::{Error, Result};
 use hidapi::HidDevice;
@@ -55,12 +55,7 @@ impl GenericKeyboard {
             .lock()
             .map_err(|e| Error::DeviceCommunication(format!("Device lock poisoned: {}", e)))?;
 
-        // Pad to 64 bytes with leading 0x00 for report ID
-        let mut report = vec![0u8; 65];
-        report[1..1 + data.len().min(64)].copy_from_slice(&data[..data.len().min(64)]);
-
-        device.write(&report)?;
-        Ok(())
+        write_padded_report(&device, data, 65, true)
     }
 }
 

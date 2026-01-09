@@ -1,6 +1,6 @@
 //! Headset device support (Arctis series).
 
-use super::{Device, DeviceInfo, DeviceType};
+use super::{write_padded_report, Device, DeviceInfo, DeviceType};
 use crate::{Error, Result};
 use hidapi::HidDevice;
 use std::sync::{Arc, Mutex};
@@ -63,11 +63,8 @@ impl GenericHeadset {
             .lock()
             .map_err(|e| Error::DeviceCommunication(format!("Device lock poisoned: {}", e)))?;
 
-        let mut report = vec![0u8; 64];
-        report[..data.len().min(64)].copy_from_slice(&data[..data.len().min(64)]);
-
-        device.write(&report)?;
-        Ok(())
+        // Headsets typically use 64-byte reports with no report ID prefix.
+        write_padded_report(&device, data, 64, false)
     }
 
     /// Receive a HID report from the headset.

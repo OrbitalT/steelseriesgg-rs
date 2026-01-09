@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use tracing::warn;
 
 use crate::config::Config;
 use crate::rgb::{Color, Effect};
@@ -133,10 +134,18 @@ impl ProfileManager {
             let path = entry.path();
 
             if path.extension().map(|e| e == "json").unwrap_or(false) {
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    if let Ok(profile) = serde_json::from_str::<Profile>(&content) {
-                        self.profiles.insert(profile.name.clone(), profile);
-                    }
+                match std::fs::read_to_string(&path) {
+                    Ok(content) => match serde_json::from_str::<Profile>(&content) {
+                        Ok(profile) => {
+                            self.profiles.insert(profile.name.clone(), profile);
+                        }
+                        Err(err) => warn!(
+                            "Skipping invalid profile file {}: {}",
+                            path.display(),
+                            err
+                        ),
+                    },
+                    Err(err) => warn!("Failed to read profile file {}: {}", path.display(), err),
                 }
             }
         }
@@ -146,7 +155,7 @@ impl ProfileManager {
 
     /// Sanitize a profile name for use as a filename.
     /// Removes or replaces characters that are invalid in filenames.
-    fn sanitize_filename(name: &str) -> String {
+    pub(crate) fn sanitize_filename(name: &str) -> String {
         name.chars()
             .map(|c| match c {
                 '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
@@ -208,3 +217,6 @@ impl ProfileManager {
 // because creating a manager may fail at runtime (e.g., filesystem issues).
 // Callers should explicitly use `ProfileManager::new()` and handle the
 // returned `Result` instead of relying on `T::default()`.
+
+#[cfg(test)]
+mod tests;

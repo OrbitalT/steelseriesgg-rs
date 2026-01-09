@@ -7,7 +7,8 @@ pub mod keyboards;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::{Result, STEELSERIES_VENDOR_ID};
+use crate::{Error, Result, STEELSERIES_VENDOR_ID};
+use hidapi::HidDevice;
 
 pub use discovery::DeviceManager;
 
@@ -86,6 +87,34 @@ pub trait Device: Send + Sync {
 
     /// Receive raw HID data from the device.
     fn receive_raw(&mut self, buf: &mut [u8]) -> Result<usize>;
+}
+
+/// Write a padded HID report, handling the optional leading report ID byte and
+/// constraining to the standard 64/65 byte HID buffers.
+pub fn write_padded_report(
+    device: &HidDevice,
+    data: &[u8],
+    report_len: usize,
+    include_report_id: bool,
+) -> Result<()> {
+    if report_len == 0 || report_len > 65 {
+        return Err(Error::DeviceCommunication(format!(
+            "Invalid report length {} (expected 1-65)",
+            report_len
+        )));
+    }
+
+    let mut report = [0u8; 65];
+    let offset = if include_report_id { 1 } else { 0 };
+    let effective_len = report_len.min(report.len());
+    let copy_len = data.len().min(effective_len.saturating_sub(offset));
+
+    if copy_len > 0 {
+        report[offset..offset + copy_len].copy_from_slice(&data[..copy_len]);
+    }
+
+    device.write(&report[..effective_len])?;
+    Ok(())
 }
 
 /// Known SteelSeries device product IDs.

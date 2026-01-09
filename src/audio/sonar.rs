@@ -105,7 +105,6 @@ impl SonarClient {
 
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(5))
-            .danger_accept_invalid_certs(true)
             .build()
             .map_err(|e| Error::Audio(format!("Failed to create HTTP client: {}", e)))?;
 
@@ -119,7 +118,6 @@ impl SonarClient {
     async fn discover_port() -> Result<u16> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(5))
-            .danger_accept_invalid_certs(true)
             .build()
             .map_err(|e| Error::Audio(format!("Failed to create HTTP client: {}", e)))?;
 

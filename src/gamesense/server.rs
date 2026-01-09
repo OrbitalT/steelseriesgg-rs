@@ -309,3 +309,114 @@ async fn remove_event(
 
     (StatusCode::OK, Json(ApiResponse::success()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_color_static() {
+        let handler = ColorHandler::Static {
+            red: 255,
+            green: 0,
+            blue: 0,
+        };
+        
+        let (r, g, b) = compute_color(&handler, 50).unwrap();
+        assert_eq!(r, 255);
+        assert_eq!(g, 0);
+        assert_eq!(b, 0);
+    }
+
+    #[test]
+    fn test_compute_color_gradient() {
+        let handler = ColorHandler::Gradient {
+            gradient: GradientSpec {
+                zero: ColorSpec {
+                    red: 255,
+                    green: 0,
+                    blue: 0,
+                },
+                hundred: ColorSpec {
+                    red: 0,
+                    green: 255,
+                    blue: 0,
+                },
+            },
+        };
+
+        // At value 0, should be red
+        let (r, g, b) = compute_color(&handler, 0).unwrap();
+        assert_eq!(r, 255);
+        assert_eq!(g, 0);
+        assert_eq!(b, 0);
+
+        // At value 100, should be green
+        let (r, g, b) = compute_color(&handler, 100).unwrap();
+        assert_eq!(r, 0);
+        assert_eq!(g, 255);
+        assert_eq!(b, 0);
+
+        // At value 50, should be blend
+        let (r, g, b) = compute_color(&handler, 50).unwrap();
+        assert!(r > 100 && r < 150);
+        assert!(g > 100 && g < 150);
+        assert_eq!(b, 0);
+    }
+
+    #[test]
+    fn test_compute_color_range() {
+        let handler = ColorHandler::Range {
+            color: vec![
+                RangeColor {
+                    low: 0,
+                    high: 25,
+                    color: ColorSpec {
+                        red: 255,
+                        green: 0,
+                        blue: 0,
+                    },
+                },
+                RangeColor {
+                    low: 26,
+                    high: 75,
+                    color: ColorSpec {
+                        red: 255,
+                        green: 255,
+                        blue: 0,
+                    },
+                },
+                RangeColor {
+                    low: 76,
+                    high: 100,
+                    color: ColorSpec {
+                        red: 0,
+                        green: 255,
+                        blue: 0,
+                    },
+                },
+            ],
+        };
+
+        // Test first range
+        let (r, g, b) = compute_color(&handler, 10).unwrap();
+        assert_eq!(r, 255);
+        assert_eq!(g, 0);
+        assert_eq!(b, 0);
+
+        // Test second range
+        let (r, g, b) = compute_color(&handler, 50).unwrap();
+        assert_eq!(r, 255);
+        assert_eq!(g, 255);
+        assert_eq!(b, 0);
+
+        // Test third range
+        let (r, g, b) = compute_color(&handler, 90).unwrap();
+        assert_eq!(r, 0);
+        assert_eq!(g, 255);
+        assert_eq!(b, 0);
+
+        // Test value outside ranges
+        assert!(compute_color(&handler, 150).is_none());
+    }
+}

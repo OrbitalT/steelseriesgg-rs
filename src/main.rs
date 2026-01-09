@@ -854,31 +854,61 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
         
         loop {
             interval.tick().await;
-            
+
             let mut state = daemon_state_anim.write().await;
-            
+
             // Clean up expired overlays
             let now = std::time::Instant::now();
-            state.gamesense_overlays.retain(|_, (_, expiry)| *expiry > now);
-            
+            state
+                .gamesense_overlays
+                .retain(|_, (_, expiry)| *expiry > now);
+
             // Rate limiting: only write every 50ms to avoid USB spam
             if last_write.elapsed() < Duration::from_millis(50) {
                 continue;
             }
-            
-            // Update all keyboards
+
+            let overlays: Vec<(String, (Color, std::time::Instant))> = state
+                .gamesense_overlays
+                .iter()
+                .map(|(zone, (color, expiry))| (zone.clone(), (*color, *expiry)))
+                .collect();
+
             for (serial, (keyboard, controller, _info)) in state.keyboards.iter_mut() {
-                // Compute base colors from effect
-                let colors = controller.compute_colors();
-                
-                // TODO: Apply GameSense overlays by zone mapping
-                // For now, just apply base effect
-                
+                let mut colors = controller.compute_colors();
+
+                // Apply GameSense overlays using simple zone mapping.
+                if !overlays.is_empty() {
+                    let zone_count = colors.len();
+                    for (zone, (overlay_color, _)) in overlays.iter() {
+                        let zl = zone.to_ascii_lowercase();
+
+                        let apply_all = zl == "all" || zl == "keyboard";
+                        if apply_all {
+                            for c in colors.iter_mut() {
+                                *c = *overlay_color;
+                            }
+                            continue;
+                        }
+
+                        let idx = zl
+                            .strip_prefix("zone")
+                            .and_then(|rest| rest.parse::<usize>().ok())
+                            .or_else(|| zl.parse::<usize>().ok());
+
+                        if let Some(one_based) = idx {
+                            if one_based >= 1 && one_based <= zone_count {
+                                colors[one_based - 1] = *overlay_color;
+                            }
+                        }
+                    }
+                }
+
                 if let Err(e) = keyboard.set_zone_colors(&colors) {
                     tracing::warn!("Failed to update keyboard {}: {}", serial, e);
                 }
             }
-            
+
             last_write = now;
         }
     });
