@@ -32,9 +32,16 @@ fn effects_equal(a: &Effect, b: &Effect) -> bool {
 
     match (a, b) {
         (Static { color: c1 }, Static { color: c2 }) => c1 == c2,
-        (Breathing { color: c1, speed: s1 }, Breathing { color: c2, speed: s2 }) => {
-            c1 == c2 && s1 == s2
-        }
+        (
+            Breathing {
+                color: c1,
+                speed: s1,
+            },
+            Breathing {
+                color: c2,
+                speed: s2,
+            },
+        ) => c1 == c2 && s1 == s2,
         (Spectrum { speed: s1 }, Spectrum { speed: s2 }) => s1 == s2,
         (
             Wave {
@@ -48,12 +55,17 @@ fn effects_equal(a: &Effect, b: &Effect) -> bool {
                 direction: d2,
             },
         ) => c1 == c2 && s1 == s2 && d1 == d2,
-        (Reactive { color: c1, duration: d1 }, Reactive { color: c2, duration: d2 }) => {
-            c1 == c2 && d1 == d2
-        }
-        (Gradient { start: s1, end: e1 }, Gradient { start: s2, end: e2 }) => {
-            s1 == s2 && e1 == e2
-        }
+        (
+            Reactive {
+                color: c1,
+                duration: d1,
+            },
+            Reactive {
+                color: c2,
+                duration: d2,
+            },
+        ) => c1 == c2 && d1 == d2,
+        (Gradient { start: s1, end: e1 }, Gradient { start: s2, end: e2 }) => s1 == s2 && e1 == e2,
         (Custom { colors: c1 }, Custom { colors: c2 }) => c1 == c2,
         (Off, Off) => true,
         _ => false,
@@ -157,7 +169,9 @@ impl DeviceStateStore {
     /// Create a new device state store.
     pub fn new() -> Result<Self> {
         let state_file = Config::config_dir()
-            .ok_or_else(|| Error::InvalidConfig("could not determine config directory".to_string()))?
+            .ok_or_else(|| {
+                Error::InvalidConfig("could not determine config directory".to_string())
+            })?
             .join("device_state.json");
 
         if let Some(parent) = state_file.parent() {
@@ -232,7 +246,10 @@ impl DeviceStateStore {
             .find(|existing| Self::id_loosely_matches(existing, &id))
             .cloned()
         {
-            return self.states.get_mut(&existing_key).expect("key just found exists");
+            return self
+                .states
+                .get_mut(&existing_key)
+                .expect("key just found exists");
         }
 
         self.states.entry(id).or_insert_with(DeviceState::default)

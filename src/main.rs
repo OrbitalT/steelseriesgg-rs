@@ -9,7 +9,9 @@ use tracing_subscriber::FmtSubscriber;
 use steelseries_gg::config::Config;
 use steelseries_gg::device_state::{DeviceId, DeviceStateStore, KeyboardState};
 use steelseries_gg::devices::keyboards::Keyboard;
-use steelseries_gg::devices::{discovery::print_device_summary, DeviceInfo, DeviceManager, DeviceType};
+use steelseries_gg::devices::{
+    discovery::print_device_summary, DeviceInfo, DeviceManager, DeviceType,
+};
 use steelseries_gg::gamesense::GameSenseServer;
 use steelseries_gg::profiles::{KeyboardProfile, Profile, ProfileManager};
 use steelseries_gg::rgb::{Color, Effect, RgbController, WaveDirection};
@@ -349,7 +351,7 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
 
             println!("Setting color to {}", color);
             keyboard.set_color(color)?;
-            
+
             // Persist the effect to state store
             state_store.update_keyboard_effect(device_id, Effect::Static { color })?;
             println!("Done!");
@@ -359,7 +361,7 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
             let level = level.min(100);
             println!("Setting brightness to {}%", level);
             keyboard.set_brightness(level)?;
-            
+
             // Persist brightness to state store
             state_store.update_keyboard_brightness(device_id, level)?;
             println!("Done!");
@@ -402,7 +404,7 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
         RgbAction::Off => {
             println!("Turning off LEDs");
             keyboard.set_color(Color::BLACK)?;
-            
+
             // Persist the off state
             state_store.update_keyboard_effect(device_id, Effect::Off)?;
             println!("Done!");
@@ -431,19 +433,21 @@ fn cmd_profile(action: ProfileAction) -> anyhow::Result<()> {
         ProfileAction::Load { name } => {
             if let Some(profile) = profile_manager.get(&name) {
                 println!("Loading profile: {}", profile.name);
-                
+
                 let device_manager = DeviceManager::new()?;
                 let mut state_store = DeviceStateStore::new()?;
-                
+
                 // Apply keyboard settings if present
                 if let Some(ref keyboard_profile) = profile.keyboard {
-                    if let Some(keyboard_info) = device_manager.first_device_of_type(DeviceType::Keyboard) {
+                    if let Some(keyboard_info) =
+                        device_manager.first_device_of_type(DeviceType::Keyboard)
+                    {
                         let mut keyboard = device_manager.open_keyboard(keyboard_info)?;
                         let device_id = DeviceId::from(keyboard_info);
-                        
+
                         // Apply brightness
                         keyboard.set_brightness(keyboard_profile.brightness)?;
-                        
+
                         // Apply effect - for static effects, apply immediately
                         match &keyboard_profile.effect {
                             Effect::Static { color } => {
@@ -456,19 +460,22 @@ fn cmd_profile(action: ProfileAction) -> anyhow::Result<()> {
                                 println!("Note: Animated effects require running as daemon");
                             }
                         }
-                        
+
                         // Persist to state store
-                        state_store.update_keyboard(device_id, KeyboardState {
-                            effect: keyboard_profile.effect.clone(),
-                            brightness: keyboard_profile.brightness,
-                        })?;
-                        
+                        state_store.update_keyboard(
+                            device_id,
+                            KeyboardState {
+                                effect: keyboard_profile.effect.clone(),
+                                brightness: keyboard_profile.brightness,
+                            },
+                        )?;
+
                         println!("Applied keyboard settings");
                     } else {
                         println!("No keyboard found");
                     }
                 }
-                
+
                 println!("Profile loaded!");
             } else {
                 println!("Profile not found: {}", name);
@@ -479,7 +486,7 @@ fn cmd_profile(action: ProfileAction) -> anyhow::Result<()> {
             let mut profile = Profile::new(name.clone());
             let state_store = DeviceStateStore::new()?;
             let device_manager = DeviceManager::new()?;
-            
+
             // Capture keyboard settings from state store
             if let Some(keyboard_info) = device_manager.first_device_of_type(DeviceType::Keyboard) {
                 let device_id = DeviceId::from(keyboard_info);
@@ -493,7 +500,7 @@ fn cmd_profile(action: ProfileAction) -> anyhow::Result<()> {
                     }
                 }
             }
-            
+
             profile_manager.set(profile)?;
             println!("Profile saved: {}", name);
         }
@@ -748,14 +755,16 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
                 Ok(keyboard) => {
                     let zone_count = keyboard.zone_count();
                     let rgb_controller = RgbController::new(zone_count);
-                    let serial = kb_info.serial_number.clone().unwrap_or_else(|| "unknown".to_string());
-                    
+                    let serial = kb_info
+                        .serial_number
+                        .clone()
+                        .unwrap_or_else(|| "unknown".to_string());
+
                     info!("Opened keyboard: {} (zones: {})", kb_info.name, zone_count);
-                    state.keyboards.insert(
-                        serial.clone(),
-                        (keyboard, rgb_controller, kb_info.clone()),
-                    );
-                    
+                    state
+                        .keyboards
+                        .insert(serial.clone(), (keyboard, rgb_controller, kb_info.clone()));
+
                     // Load state from store if available
                     let device_id = DeviceId::from(kb_info);
                     if let Some(device_state) = state_store.get(&device_id) {
@@ -763,8 +772,10 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
                             if let Some((_, controller, _)) = state.keyboards.get_mut(&serial) {
                                 controller.set_effect(kb_state.effect.clone());
                                 controller.set_brightness(kb_state.brightness as f32 / 100.0);
-                                info!("Loaded state for {}: brightness={}%, effect={:?}", 
-                                    kb_info.name, kb_state.brightness, kb_state.effect);
+                                info!(
+                                    "Loaded state for {}: brightness={}%, effect={:?}",
+                                    kb_info.name, kb_state.brightness, kb_state.effect
+                                );
                             }
                         }
                     }
@@ -781,23 +792,27 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
         let gs_bind = config.gamesense.bind_address.clone();
         let gs_port = config.gamesense.port;
         let daemon_state_clone = daemon_state.clone();
-        
+
         tokio::spawn(async move {
             match GameSenseServer::new(&gs_bind, gs_port) {
                 Ok(server) => {
                     // Set RGB callback to update overlays
-                    server.set_rgb_callback(move |zone: &str, r: u8, g: u8, b: u8| {
-                        let state = daemon_state_clone.clone();
-                        let zone_owned = zone.to_string();
-                        tokio::spawn(async move {
-                            let mut state = state.write().await;
-                            let color = Color::new(r, g, b);
-                            let expiry = std::time::Instant::now() + Duration::from_secs(30);
-                            state.gamesense_overlays.insert(zone_owned.clone(), (color, expiry));
-                            tracing::debug!("GameSense overlay: {} = {:?}", zone_owned, color);
-                        });
-                    }).await;
-                    
+                    server
+                        .set_rgb_callback(move |zone: &str, r: u8, g: u8, b: u8| {
+                            let state = daemon_state_clone.clone();
+                            let zone_owned = zone.to_string();
+                            tokio::spawn(async move {
+                                let mut state = state.write().await;
+                                let color = Color::new(r, g, b);
+                                let expiry = std::time::Instant::now() + Duration::from_secs(30);
+                                state
+                                    .gamesense_overlays
+                                    .insert(zone_owned.clone(), (color, expiry));
+                                tracing::debug!("GameSense overlay: {} = {:?}", zone_owned, color);
+                            });
+                        })
+                        .await;
+
                     if let Err(e) = server.run().await {
                         tracing::error!("GameSense server error: {}", e);
                     }
@@ -822,21 +837,24 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
         if let Ok(profile_manager) = ProfileManager::new() {
             if let Some(profile) = profile_manager.get(profile_name) {
                 info!("Loading default profile: {}", profile.name);
-                
+
                 // Apply keyboard settings if present
                 if let Some(ref keyboard_profile) = profile.keyboard {
                     let mut state = daemon_state.write().await;
                     for (_serial, (_keyboard, controller, info)) in state.keyboards.iter_mut() {
                         controller.set_effect(keyboard_profile.effect.clone());
                         controller.set_brightness(keyboard_profile.brightness as f32 / 100.0);
-                        
+
                         // Persist to state store
                         let device_id = DeviceId::from(&*info);
-                        let _ = state_store.update_keyboard(device_id, KeyboardState {
-                            effect: keyboard_profile.effect.clone(),
-                            brightness: keyboard_profile.brightness,
-                        });
-                        
+                        let _ = state_store.update_keyboard(
+                            device_id,
+                            KeyboardState {
+                                effect: keyboard_profile.effect.clone(),
+                                brightness: keyboard_profile.brightness,
+                            },
+                        );
+
                         info!("Applied profile to keyboard: {}", info.name);
                     }
                 }
@@ -851,7 +869,7 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
     let animation_task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(33)); // ~30 FPS
         let mut last_write = std::time::Instant::now();
-        
+
         loop {
             interval.tick().await;
 
@@ -940,7 +958,7 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
 
     // Abort animation task
     animation_task.abort();
-    
+
     info!("Daemon stopped.");
     Ok(())
 }

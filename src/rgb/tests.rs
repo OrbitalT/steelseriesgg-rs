@@ -40,7 +40,7 @@ fn test_color_blend() {
 #[test]
 fn test_color_scale() {
     let color = Color::new(200, 150, 100);
-    
+
     // Scale by 0.5 should halve all values
     let scaled = color.scale(0.5);
     assert_eq!(scaled.r, 100);
@@ -76,9 +76,7 @@ fn test_color_from_hsv() {
 
 #[test]
 fn test_effect_engine_static() {
-    let effect = Effect::Static {
-        color: Color::RED,
-    };
+    let effect = Effect::Static { color: Color::RED };
     let mut engine = EffectEngine::new(effect, 5);
 
     let colors = engine.compute();
@@ -98,13 +96,13 @@ fn test_effect_engine_gradient() {
 
     let colors = engine.compute();
     assert_eq!(colors.len(), 3);
-    
+
     // First should be red
     assert_eq!(colors[0], Color::RED);
-    
+
     // Last should be blue
     assert_eq!(colors[2], Color::BLUE);
-    
+
     // Middle should be blend
     assert!(colors[1].r > 0 && colors[1].b > 0);
 }
@@ -119,12 +117,12 @@ fn test_effect_engine_custom() {
 
     let colors = engine.compute();
     assert_eq!(colors.len(), 5);
-    
+
     // First three should match custom colors
     assert_eq!(colors[0], Color::RED);
     assert_eq!(colors[1], Color::GREEN);
     assert_eq!(colors[2], Color::BLUE);
-    
+
     // Remaining should be black (padding)
     assert_eq!(colors[3], Color::BLACK);
     assert_eq!(colors[4], Color::BLACK);
@@ -167,15 +165,13 @@ fn test_rgb_controller_brightness() {
 
 #[test]
 fn test_effect_engine_caching() {
-    let effect = Effect::Static {
-        color: Color::RED,
-    };
+    let effect = Effect::Static { color: Color::RED };
     let mut engine = EffectEngine::new(effect, 5);
 
     // First compute
     let colors = engine.compute();
     assert_eq!(colors.len(), 5);
-    
+
     // Immediate second compute should return cached values
     let colors = engine.compute();
     assert_eq!(colors.len(), 5);

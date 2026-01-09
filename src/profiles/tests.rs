@@ -17,20 +17,21 @@ fn test_profile_serialization() {
     let mut profile = Profile::new("Gaming");
     profile.description = Some("My gaming profile".to_string());
     profile.keyboard = Some(KeyboardProfile {
-        effect: Effect::Static {
-            color: Color::RED,
-        },
+        effect: Effect::Static { color: Color::RED },
         brightness: 80,
     });
 
     // Serialize to JSON
     let json = serde_json::to_string(&profile).unwrap();
-    
+
     // Deserialize back
     let deserialized: Profile = serde_json::from_str(&json).unwrap();
-    
+
     assert_eq!(deserialized.name, "Gaming");
-    assert_eq!(deserialized.description.as_deref(), Some("My gaming profile"));
+    assert_eq!(
+        deserialized.description.as_deref(),
+        Some("My gaming profile")
+    );
     assert!(deserialized.keyboard.is_some());
     assert_eq!(deserialized.keyboard.as_ref().unwrap().brightness, 80);
 }

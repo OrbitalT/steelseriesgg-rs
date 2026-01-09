@@ -27,7 +27,7 @@ build() {
   cd "steelseriesgg-rs-$pkgver"
   export CARGO_TARGET_DIR=target
   # Build with default features only (no audio/sonar dependencies)
-  cargo build --release --frozen
+  cargo build -r --frozen
 }
 
 check() {

@@ -139,11 +139,9 @@ impl ProfileManager {
                         Ok(profile) => {
                             self.profiles.insert(profile.name.clone(), profile);
                         }
-                        Err(err) => warn!(
-                            "Skipping invalid profile file {}: {}",
-                            path.display(),
-                            err
-                        ),
+                        Err(err) => {
+                            warn!("Skipping invalid profile file {}: {}", path.display(), err)
+                        }
                     },
                     Err(err) => warn!("Failed to read profile file {}: {}", path.display(), err),
                 }

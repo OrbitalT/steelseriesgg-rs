@@ -321,7 +321,7 @@ mod tests {
             green: 0,
             blue: 0,
         };
-        
+
         let (r, g, b) = compute_color(&handler, 50).unwrap();
         assert_eq!(r, 255);
         assert_eq!(g, 0);
