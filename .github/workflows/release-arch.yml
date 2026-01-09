@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm git rust cargo
+          pacman -S --noconfirm git rust cargo hidapi systemd-libs
 
       - uses: actions/checkout@v4
         with:

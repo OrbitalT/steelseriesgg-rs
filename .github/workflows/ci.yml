@@ -25,42 +25,89 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features:
+          - ""
+          - "--features sonar"
+          - "--features audio"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - name: Install dependencies
+      
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libudev-dev libhidapi-dev
+      
+      - name: Install audio dependencies (for audio feature)
+        if: contains(matrix.features, 'audio')
+        run: sudo apt-get install -y libpulse-dev
+      
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.features }}
+      
       - name: Run clippy
-        run: cargo clippy --all-targets --locked -- -D warnings
+        run: cargo clippy --all-targets --locked ${{ matrix.features }} -- -D warnings
 
   test:
     name: Test
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features:
+          - ""
+          - "--features sonar"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install dependencies
+      
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libudev-dev libhidapi-dev
+      
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.features }}
+      
       - name: Run tests
-        run: cargo test --locked
+        run: cargo test --locked ${{ matrix.features }}
 
   build:
     name: Build
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features:
+          - ""
+          - "--features sonar"
+          - "--features audio"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install dependencies
+      
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libudev-dev libhidapi-dev
+      
+      - name: Install audio dependencies (for audio feature)
+        if: contains(matrix.features, 'audio')
+        run: sudo apt-get install -y libpulse-dev
+      
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.features }}
+      
       - name: Build release binary
-        run: cargo build --release --locked
+        run: cargo build --release --locked ${{ matrix.features }}
+      
       - name: Check binary exists
         run: test -f target/release/ssgg
