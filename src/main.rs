@@ -8,10 +8,16 @@ use tracing_subscriber::FmtSubscriber;
 
 use steelseries_gg::config::Config;
 use steelseries_gg::device_state::{DeviceId, DeviceStateStore, KeyboardState};
-use steelseries_gg::devices::{discovery::print_device_summary, DeviceManager, DeviceType};
+use steelseries_gg::devices::keyboards::Keyboard;
+use steelseries_gg::devices::{discovery::print_device_summary, DeviceInfo, DeviceManager, DeviceType};
 use steelseries_gg::gamesense::GameSenseServer;
 use steelseries_gg::profiles::{KeyboardProfile, Profile, ProfileManager};
-use steelseries_gg::rgb::{Color, Effect, WaveDirection};
+use steelseries_gg::rgb::{Color, Effect, RgbController, WaveDirection};
+
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::RwLock;
 
 #[cfg(feature = "audio")]
 use steelseries_gg::audio::{AudioMixer, Channel};
@@ -707,18 +713,91 @@ async fn cmd_server(port: u16) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Daemon state for managing connected devices and RGB controllers.
+struct DaemonState {
+    keyboards: HashMap<String, (Box<dyn Keyboard>, RgbController, DeviceInfo)>,
+    gamesense_overlays: HashMap<String, (Color, std::time::Instant)>, // zone -> (color, expiry)
+}
+
+impl DaemonState {
+    fn new() -> Self {
+        Self {
+            keyboards: HashMap::new(),
+            gamesense_overlays: HashMap::new(),
+        }
+    }
+}
+
 async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
     info!("Starting SteelSeries GG daemon");
 
     let config = Config::load()?;
+    let mut state_store = DeviceStateStore::new()?;
+
+    // Initialize daemon state
+    let daemon_state = Arc::new(RwLock::new(DaemonState::new()));
+
+    // Discover and open keyboards
+    let keyboards_info = manager.keyboards();
+    if keyboards_info.is_empty() {
+        info!("No keyboards found");
+    } else {
+        let mut state = daemon_state.write().await;
+        for kb_info in keyboards_info {
+            match manager.open_keyboard(kb_info) {
+                Ok(keyboard) => {
+                    let zone_count = keyboard.zone_count();
+                    let rgb_controller = RgbController::new(zone_count);
+                    let serial = kb_info.serial_number.clone().unwrap_or_else(|| "unknown".to_string());
+                    
+                    info!("Opened keyboard: {} (zones: {})", kb_info.name, zone_count);
+                    state.keyboards.insert(
+                        serial.clone(),
+                        (keyboard, rgb_controller, kb_info.clone()),
+                    );
+                    
+                    // Load state from store if available
+                    let device_id = DeviceId::from(kb_info);
+                    if let Some(device_state) = state_store.get(&device_id) {
+                        if let Some(ref kb_state) = device_state.keyboard {
+                            if let Some((_, controller, _)) = state.keyboards.get_mut(&serial) {
+                                controller.set_effect(kb_state.effect.clone());
+                                controller.set_brightness(kb_state.brightness as f32 / 100.0);
+                                info!("Loaded state for {}: brightness={}%, effect={:?}", 
+                                    kb_info.name, kb_state.brightness, kb_state.effect);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to open keyboard {}: {}", kb_info.name, e);
+                }
+            }
+        }
+    }
 
     // Start GameSense server in background if enabled
     if config.gamesense.enabled {
         let gs_bind = config.gamesense.bind_address.clone();
         let gs_port = config.gamesense.port;
+        let daemon_state_clone = daemon_state.clone();
+        
         tokio::spawn(async move {
             match GameSenseServer::new(&gs_bind, gs_port) {
                 Ok(server) => {
+                    // Set RGB callback to update overlays
+                    server.set_rgb_callback(move |zone: &str, r: u8, g: u8, b: u8| {
+                        let state = daemon_state_clone.clone();
+                        let zone_owned = zone.to_string();
+                        tokio::spawn(async move {
+                            let mut state = state.write().await;
+                            let color = Color::new(r, g, b);
+                            let expiry = std::time::Instant::now() + Duration::from_secs(30);
+                            state.gamesense_overlays.insert(zone_owned.clone(), (color, expiry));
+                            tracing::debug!("GameSense overlay: {} = {:?}", zone_owned, color);
+                        });
+                    }).await;
+                    
                     if let Err(e) = server.run().await {
                         tracing::error!("GameSense server error: {}", e);
                     }
@@ -743,12 +822,66 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
         if let Ok(profile_manager) = ProfileManager::new() {
             if let Some(profile) = profile_manager.get(profile_name) {
                 info!("Loading default profile: {}", profile.name);
-                // TODO: Apply profile
+                
+                // Apply keyboard settings if present
+                if let Some(ref keyboard_profile) = profile.keyboard {
+                    let mut state = daemon_state.write().await;
+                    for (_serial, (_keyboard, controller, info)) in state.keyboards.iter_mut() {
+                        controller.set_effect(keyboard_profile.effect.clone());
+                        controller.set_brightness(keyboard_profile.brightness as f32 / 100.0);
+                        
+                        // Persist to state store
+                        let device_id = DeviceId::from(&*info);
+                        let _ = state_store.update_keyboard(device_id, KeyboardState {
+                            effect: keyboard_profile.effect.clone(),
+                            brightness: keyboard_profile.brightness,
+                        });
+                        
+                        info!("Applied profile to keyboard: {}", info.name);
+                    }
+                }
             }
         }
     }
 
     info!("Daemon running. Press Ctrl+C to stop.");
+
+    // Spawn RGB animation loop
+    let daemon_state_anim = daemon_state.clone();
+    let animation_task = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_millis(33)); // ~30 FPS
+        let mut last_write = std::time::Instant::now();
+        
+        loop {
+            interval.tick().await;
+            
+            let mut state = daemon_state_anim.write().await;
+            
+            // Clean up expired overlays
+            let now = std::time::Instant::now();
+            state.gamesense_overlays.retain(|_, (_, expiry)| *expiry > now);
+            
+            // Rate limiting: only write every 50ms to avoid USB spam
+            if last_write.elapsed() < Duration::from_millis(50) {
+                continue;
+            }
+            
+            // Update all keyboards
+            for (serial, (keyboard, controller, _info)) in state.keyboards.iter_mut() {
+                // Compute base colors from effect
+                let colors = controller.compute_colors();
+                
+                // TODO: Apply GameSense overlays by zone mapping
+                // For now, just apply base effect
+                
+                if let Err(e) = keyboard.set_zone_colors(&colors) {
+                    tracing::warn!("Failed to update keyboard {}: {}", serial, e);
+                }
+            }
+            
+            last_write = now;
+        }
+    });
 
     // Set up graceful shutdown on SIGTERM (systemd stop) and SIGINT (Ctrl+C)
     #[cfg(unix)]
@@ -775,6 +908,9 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
         info!("Received Ctrl+C, shutting down gracefully...");
     }
 
+    // Abort animation task
+    animation_task.abort();
+    
     info!("Daemon stopped.");
     Ok(())
 }
