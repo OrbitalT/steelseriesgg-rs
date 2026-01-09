@@ -4,6 +4,7 @@ use hidapi::HidApi;
 use std::collections::HashMap;
 use tracing::{debug, info};
 
+use super::keyboards::{GenericKeyboard, Keyboard};
 use super::{device_name_from_product_id, device_type_from_product_id, DeviceInfo, DeviceType};
 use crate::{Error, Result, STEELSERIES_VENDOR_ID};
 
@@ -149,6 +150,22 @@ impl DeviceManager {
     /// Get a reference to the HID API.
     pub fn api(&self) -> &HidApi {
         &self.api
+    }
+
+    /// Open a keyboard device and return a boxed Keyboard trait object.
+    /// This is a convenience wrapper around open_device that returns a properly
+    /// initialized keyboard instance.
+    pub fn open_keyboard(&self, info: &DeviceInfo) -> Result<Box<dyn Keyboard>> {
+        if info.device_type != DeviceType::Keyboard {
+            return Err(Error::DeviceCommunication(format!(
+                "Device {} is not a keyboard",
+                info.name
+            )));
+        }
+
+        let hid_device = self.open_device(info)?;
+        let generic_keyboard = GenericKeyboard::new(info.clone(), hid_device);
+        Ok(Box::new(generic_keyboard))
     }
 }
 

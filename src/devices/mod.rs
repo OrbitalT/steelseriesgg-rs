@@ -173,3 +173,17 @@ pub fn device_name_from_product_id(product_id: u16) -> &'static str {
         _ => "Unknown SteelSeries Device",
     }
 }
+
+/// Get RGB zone count for keyboard product IDs.
+/// Returns the number of independently controllable RGB zones.
+pub fn zone_count_for_product_id(product_id: u16) -> usize {
+    use product_ids::*;
+
+    match product_id {
+        APEX_3 => 10,                // Apex 3 - 10 zones
+        APEX_3_TKL => 9,             // Apex 3 TKL - 9 zones
+        APEX_PRO_TKL_2023 => 9,      // Apex Pro TKL (2023) - 9 zones
+        APEX_PRO | APEX_PRO_TKL | APEX_5 | APEX_7 | APEX_7_TKL => 1, // Single zone for now
+        _ => 1,                      // Default single zone
+    }
+}

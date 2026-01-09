@@ -144,9 +144,27 @@ impl ProfileManager {
         Ok(())
     }
 
+    /// Sanitize a profile name for use as a filename.
+    /// Removes or replaces characters that are invalid in filenames.
+    fn sanitize_filename(name: &str) -> String {
+        name.chars()
+            .map(|c| match c {
+                '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+                c if c.is_control() => '_',
+                c => c,
+            })
+            .collect::<String>()
+            .trim()
+            .to_string()
+    }
+
     /// Save a profile to disk.
     pub fn save(&self, profile: &Profile) -> Result<()> {
-        let path = self.profiles_dir.join(format!("{}.json", profile.name));
+        let filename = Self::sanitize_filename(&profile.name);
+        if filename.is_empty() {
+            return Err(Error::Profile("Profile name cannot be empty".to_string()));
+        }
+        let path = self.profiles_dir.join(format!("{}.json", filename));
         let content = serde_json::to_string_pretty(profile)?;
         std::fs::write(path, content)?;
         Ok(())
@@ -166,7 +184,8 @@ impl ProfileManager {
 
     /// Delete a profile.
     pub fn delete(&mut self, name: &str) -> Result<()> {
-        let path = self.profiles_dir.join(format!("{}.json", name));
+        let filename = Self::sanitize_filename(name);
+        let path = self.profiles_dir.join(format!("{}.json", filename));
         if path.exists() {
             std::fs::remove_file(path)?;
         }

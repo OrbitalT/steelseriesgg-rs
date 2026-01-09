@@ -2,7 +2,7 @@
 
 pub mod apex;
 
-use super::{Device, DeviceInfo, DeviceType};
+use super::{zone_count_for_product_id, Device, DeviceInfo, DeviceType};
 use crate::rgb::Color;
 use crate::{Error, Result};
 use hidapi::HidDevice;
@@ -36,12 +36,8 @@ pub struct GenericKeyboard {
 impl GenericKeyboard {
     /// Create a new keyboard instance.
     pub fn new(info: DeviceInfo, device: HidDevice) -> Self {
-        // Determine zone count based on product ID
-        let zone_count = match info.product_id {
-            0x1622 => 9,  // Apex 3 TKL - 9 zones
-            0x161A => 10, // Apex 3 - 10 zones
-            _ => 1,       // Default single zone
-        };
+        // Use centralized zone count mapping
+        let zone_count = zone_count_for_product_id(info.product_id);
 
         Self {
             info,

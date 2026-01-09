@@ -7,9 +7,10 @@ use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use steelseries_gg::config::Config;
+use steelseries_gg::device_state::{DeviceId, DeviceStateStore, KeyboardState};
 use steelseries_gg::devices::{discovery::print_device_summary, DeviceManager, DeviceType};
 use steelseries_gg::gamesense::GameSenseServer;
-use steelseries_gg::profiles::{Profile, ProfileManager};
+use steelseries_gg::profiles::{KeyboardProfile, Profile, ProfileManager};
 use steelseries_gg::rgb::{Color, Effect, WaveDirection};
 
 #[cfg(feature = "audio")]
@@ -328,8 +329,12 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
 
     println!("Using keyboard: {}", keyboard_info.name);
 
-    // Open the device
-    let device = manager.open_device(keyboard_info)?;
+    // Open device state store for persistence
+    let mut state_store = DeviceStateStore::new()?;
+    let device_id = DeviceId::from(keyboard_info);
+
+    // Open the keyboard using the abstraction layer
+    let mut keyboard = manager.open_keyboard(keyboard_info)?;
 
     match action {
         RgbAction::Color { color } => {
@@ -337,32 +342,20 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
                 parse_color(&color).ok_or_else(|| anyhow::anyhow!("Invalid color: {}", color))?;
 
             println!("Setting color to {}", color);
-
-            // Build the color packet (9 zones)
-            let mut data = vec![0x21, 0xFF];
-            for _ in 0..9 {
-                data.push(color.r);
-                data.push(color.g);
-                data.push(color.b);
-            }
-
-            // Pad to 64 bytes
-            let mut report = vec![0u8; 65];
-            report[1..1 + data.len()].copy_from_slice(&data);
-            device.write(&report)?;
-
+            keyboard.set_color(color)?;
+            
+            // Persist the effect to state store
+            state_store.update_keyboard_effect(device_id, Effect::Static { color })?;
             println!("Done!");
         }
 
         RgbAction::Brightness { level } => {
             let level = level.min(100);
             println!("Setting brightness to {}%", level);
-
-            let mut report = vec![0u8; 65];
-            report[1] = 0x22;
-            report[2] = level;
-            device.write(&report)?;
-
+            keyboard.set_brightness(level)?;
+            
+            // Persist brightness to state store
+            state_store.update_keyboard_brightness(device_id, level)?;
             println!("Done!");
         }
 
@@ -394,19 +387,18 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
             };
 
             println!("Setting effect: {:?}", effect);
+            // Persist effect to state store
+            state_store.update_keyboard_effect(device_id, effect)?;
             // Note: Full effect implementation would require a background loop
             println!("(Note: Animated effects require running as daemon)");
         }
 
         RgbAction::Off => {
             println!("Turning off LEDs");
-
-            let mut report = vec![0u8; 65];
-            report[1] = 0x21;
-            report[2] = 0xFF;
-            // All zeros for black
-            device.write(&report)?;
-
+            keyboard.set_color(Color::BLACK)?;
+            
+            // Persist the off state
+            state_store.update_keyboard_effect(device_id, Effect::Off)?;
             println!("Done!");
         }
     }
@@ -415,11 +407,11 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
 }
 
 fn cmd_profile(action: ProfileAction) -> anyhow::Result<()> {
-    let mut manager = ProfileManager::new()?;
+    let mut profile_manager = ProfileManager::new()?;
 
     match action {
         ProfileAction::List => {
-            let profiles = manager.list();
+            let profiles = profile_manager.list();
             if profiles.is_empty() {
                 println!("No profiles found.");
             } else {
@@ -431,9 +423,46 @@ fn cmd_profile(action: ProfileAction) -> anyhow::Result<()> {
         }
 
         ProfileAction::Load { name } => {
-            if let Some(profile) = manager.get(&name) {
+            if let Some(profile) = profile_manager.get(&name) {
                 println!("Loading profile: {}", profile.name);
-                // TODO: Apply profile settings to devices
+                
+                let device_manager = DeviceManager::new()?;
+                let mut state_store = DeviceStateStore::new()?;
+                
+                // Apply keyboard settings if present
+                if let Some(ref keyboard_profile) = profile.keyboard {
+                    if let Some(keyboard_info) = device_manager.first_device_of_type(DeviceType::Keyboard) {
+                        let mut keyboard = device_manager.open_keyboard(keyboard_info)?;
+                        let device_id = DeviceId::from(keyboard_info);
+                        
+                        // Apply brightness
+                        keyboard.set_brightness(keyboard_profile.brightness)?;
+                        
+                        // Apply effect - for static effects, apply immediately
+                        match &keyboard_profile.effect {
+                            Effect::Static { color } => {
+                                keyboard.set_color(*color)?;
+                            }
+                            Effect::Off => {
+                                keyboard.set_color(Color::BLACK)?;
+                            }
+                            _ => {
+                                println!("Note: Animated effects require running as daemon");
+                            }
+                        }
+                        
+                        // Persist to state store
+                        state_store.update_keyboard(device_id, KeyboardState {
+                            effect: keyboard_profile.effect.clone(),
+                            brightness: keyboard_profile.brightness,
+                        })?;
+                        
+                        println!("Applied keyboard settings");
+                    } else {
+                        println!("No keyboard found");
+                    }
+                }
+                
                 println!("Profile loaded!");
             } else {
                 println!("Profile not found: {}", name);
@@ -441,14 +470,30 @@ fn cmd_profile(action: ProfileAction) -> anyhow::Result<()> {
         }
 
         ProfileAction::Save { name } => {
-            let profile = Profile::new(name.clone());
-            // TODO: Capture current device settings
-            manager.set(profile)?;
+            let mut profile = Profile::new(name.clone());
+            let state_store = DeviceStateStore::new()?;
+            let device_manager = DeviceManager::new()?;
+            
+            // Capture keyboard settings from state store
+            if let Some(keyboard_info) = device_manager.first_device_of_type(DeviceType::Keyboard) {
+                let device_id = DeviceId::from(keyboard_info);
+                if let Some(device_state) = state_store.get(&device_id) {
+                    if let Some(ref keyboard_state) = device_state.keyboard {
+                        profile.keyboard = Some(KeyboardProfile {
+                            effect: keyboard_state.effect.clone(),
+                            brightness: keyboard_state.brightness,
+                        });
+                        println!("Captured keyboard settings");
+                    }
+                }
+            }
+            
+            profile_manager.set(profile)?;
             println!("Profile saved: {}", name);
         }
 
         ProfileAction::Delete { name } => {
-            manager.delete(&name)?;
+            profile_manager.delete(&name)?;
             println!("Profile deleted: {}", name);
         }
     }
