@@ -3,9 +3,6 @@ post_install() {
   udevadm control --reload-rules
   udevadm trigger
 
-  echo "==> Reloading systemd user daemon..."
-  systemctl --global daemon-reload
-
   echo ""
   echo "==> SteelSeries GG for Linux has been installed!"
   echo ""
@@ -15,6 +12,7 @@ post_install() {
   echo "Then log out and log back in for the group change to take effect."
   echo ""
   echo "To start the daemon as a user service:"
+  echo "  systemctl --user daemon-reload"
   echo "  systemctl --user enable --now ssgg.service"
   echo ""
   echo "To have the service start at boot (without login):"
@@ -34,9 +32,6 @@ post_remove() {
   echo "==> Reloading udev rules..."
   udevadm control --reload-rules
   udevadm trigger
-
-  echo "==> Reloading systemd user daemon..."
-  systemctl --global daemon-reload
 
   echo ""
   echo "SteelSeries GG for Linux has been removed."

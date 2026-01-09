@@ -144,19 +144,10 @@ impl Default for HeadsetState {
 }
 
 /// Aggregate device state.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct DeviceState {
     pub keyboard: Option<KeyboardState>,
     pub headset: Option<HeadsetState>,
-}
-
-impl Default for DeviceState {
-    fn default() -> Self {
-        Self {
-            keyboard: None,
-            headset: None,
-        }
-    }
 }
 
 /// Manager for device state persistence.
@@ -252,7 +243,7 @@ impl DeviceStateStore {
                 .expect("key just found exists");
         }
 
-        self.states.entry(id).or_insert_with(DeviceState::default)
+        self.states.entry(id).or_default()
     }
 
     /// Update keyboard state for a device.

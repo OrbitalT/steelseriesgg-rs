@@ -3,16 +3,32 @@
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange?style=flat-square)](https://www.rust-lang.org/)
 
-A complete open-source replacement for SteelSeries GG on Linux. Control your SteelSeries keyboards and headsets with RGB lighting, audio mixing, GameSense API compatibility, and profile management.
+Open-source SteelSeries GG replacement for Linux. Control SteelSeries keyboards and headsets: RGB lighting, GameSense-compatible server, profiles, and (optional) audio/Sonar integration.
+
+## Quickstart
+
+```bash
+git clone https://github.com/Ven0m0/steelseriesgg-rs.git
+cd steelseriesgg-rs
+cargo build --release
+./target/release/ssgg devices
+```
+
+To run the daemon as a user service after installing the package:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now ssgg.service
+```
 
 ## Features
 
-- **RGB Lighting Control** - Static colors, breathing, spectrum cycling, wave effects, reactive effects, and gradients
-- **GameSense Server** - HTTP API compatible with SteelSeries GameSense for game integrations
-- **Audio Mixer** - Per-channel volume control (PulseAudio/PipeWire integration is a work in progress)
-- **Sonar API Integration** - Direct control of SteelSeries Sonar audio device (based on [GGSonarRev](https://github.com/PrzemekkkYT/GGSonarRev))
-- **Profile Management** - Save and load device configurations
-- **Daemon Mode** - Run as a background service
+- **RGB lighting**: static, breathing, spectrum, wave, reactive, gradient, custom per-zone, off
+- **GameSense server**: HTTP API compatible with SteelSeries GameSense
+- **Profiles**: save/load device configurations
+- **Daemon mode**: background service with animations + GameSense overlays
+- **Audio mixer** (feature `audio`): domain model, PulseAudio/PipeWire wiring planned
+- **Sonar API** (feature `sonar`): control SteelSeries Sonar via HTTP (Sonar must be running)
 
 ## Supported Devices
 
@@ -33,66 +49,44 @@ A complete open-source replacement for SteelSeries GG on Linux. Control your Ste
 
 ### Prerequisites
 
-- Linux with udev support
-- Rust toolchain (1.70+)
-- `libudev-dev` or equivalent for your distribution
-- `libhidapi-dev` for HID device communication
+- Linux with udev
+- Rust 1.70+ (for source builds)
+- HID development libs (`libhidapi-dev` / `hidapi`)
 
-**Debian/Ubuntu:**
+**Debian/Ubuntu**
 ```bash
 sudo apt install libudev-dev libhidapi-dev
 ```
 
-**Fedora:**
+**Fedora**
 ```bash
 sudo dnf install systemd-devel hidapi-devel
 ```
 
-**Arch Linux:**
+**Arch Linux**
 ```bash
 sudo pacman -S hidapi
 ```
 
-### Installing from Arch Package
-
-If installing from the prebuilt Arch package (`.pkg.tar.zst`):
+### Arch package
 
 ```bash
 sudo pacman -U ssgg-*.pkg.tar.zst
 ```
 
-The package includes:
-- Binary at `/usr/bin/ssgg`
-- Systemd user unit for daemon mode
-- udev rules for device access
-- License and documentation
+What you get: `/usr/bin/ssgg`, systemd user unit, udev rules, docs.
 
-After installation:
-
-1. Add your user to the `input` group (required for device access):
+After install:
 ```bash
 sudo usermod -aG input $USER
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+systemctl --user daemon-reload
+systemctl --user enable --now ssgg.service   # optional
 ```
+For boot without login: `sudo loginctl enable-linger $USER`.
 
-2. Log out and log back in for the group change to take effect.
-
-3. Enable and start the daemon (optional):
-```bash
-systemctl --user enable --now ssgg.service
-```
-
-4. To have the service start at boot without login:
-```bash
-sudo loginctl enable-linger $USER
-```
-
-Check daemon status:
-```bash
-systemctl --user status ssgg.service
-journalctl --user -u ssgg.service -f
-```
-
-### Building from Source
+### Build from source
 
 ```bash
 git clone https://github.com/Ven0m0/steelseriesgg-rs.git
@@ -100,35 +94,27 @@ cd steelseriesgg-rs
 cargo build --release
 ```
 
-The binary will be located at `target/release/ssgg`.
+Binary: `target/release/ssgg`.
 
-### Device Permissions (udev rules)
-
-To access SteelSeries devices without root, install the udev rules:
+### Device permissions (udev)
 
 ```bash
 sudo cp assets/99-steelseries.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 sudo udevadm trigger
-```
-
-Then add your user to the `input` group:
-
-```bash
 sudo usermod -aG input $USER
 ```
-
-Log out and log back in for the group change to take effect.
+Log out/in to apply the group change.
 
 ## Usage
 
-### List Connected Devices
+### List devices
 
 ```bash
 ssgg devices
 ```
 
-### RGB Lighting
+### RGB lighting
 
 Set a static color:
 ```bash
@@ -150,7 +136,7 @@ ssgg rgb --effect wave --direction left-to-right
 
 Available effects: `static`, `breathing`, `spectrum`, `wave`, `reactive`, `gradient`, `off`
 
-### Profile Management
+### Profiles
 
 Save current configuration:
 ```bash
@@ -167,7 +153,7 @@ List profiles:
 ssgg profile list
 ```
 
-### Audio Mixer
+### Audio mixer (feature `audio`)
 
 View audio status:
 ```bash
@@ -190,7 +176,7 @@ Adjust chat mix:
 ssgg audio chat-mix --balance 25
 ```
 
-### SteelSeries Sonar Control
+### SteelSeries Sonar (feature `sonar`)
 
 The Sonar integration provides direct control over the SteelSeries Sonar audio device through its HTTP API. Sonar must be running for these commands to work.
 
@@ -236,7 +222,7 @@ List available configurations:
 ssgg sonar configs
 ```
 
-### GameSense Server
+### GameSense server
 
 Start the GameSense HTTP server:
 ```bash
@@ -245,7 +231,7 @@ ssgg server
 
 The server runs on port 27301 by default and is compatible with games that support SteelSeries GameSense.
 
-### Daemon Mode
+### Daemon mode
 
 Run as a background daemon with device control and GameSense server:
 ```bash
@@ -254,21 +240,12 @@ ssgg daemon
 
 The daemon will run in the foreground and can be stopped gracefully with Ctrl+C or `systemctl --user stop ssgg.service` when running as a systemd service.
 
-**Running as a systemd user service** (recommended for Arch Linux):
+**Run as systemd user service**
 
-After package installation, enable and start the service:
 ```bash
+systemctl --user daemon-reload
 systemctl --user enable --now ssgg.service
-```
-
-View logs:
-```bash
 journalctl --user -u ssgg.service -f
-```
-
-Stop the service:
-```bash
-systemctl --user stop ssgg.service
 ```
 
 ## Configuration
@@ -291,17 +268,18 @@ default_profile = "default"
 debug = false
 ```
 
-## Dependencies
+## Dependencies (core crates)
 
 | Crate | Purpose |
 |-------|---------|
 | hidapi | HID device communication |
 | tokio | Async runtime |
-| axum | HTTP server for GameSense |
-| reqwest | HTTP client for Sonar API |
-| serde | Serialization |
+| axum | GameSense HTTP server |
+| reqwest | Sonar HTTP client |
+| serde / serde_json | Serialization |
 | clap | CLI argument parsing |
-| libpulse-binding | PulseAudio integration (optional) |
+| tracing | Logging |
+| libpulse-binding | Audio integration (feature `audio`) |
 
 ## Feature Flags
 
@@ -326,9 +304,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Contributing
 
-Contributions are welcome! Feel free to open issues or submit pull requests.
+Issues and PRs are welcome. Please run `cargo fmt && cargo clippy --all-targets --locked` before submitting.
 
 ## Acknowledgments
 
-- [hidapi](https://crates.io/crates/hidapi) - Cross-platform HID device library
-- [apex-tux](https://github.com/not-jan/apex-tux), apex7tkl_linux - Inspiration for keyboard support
+- [hidapi](https://crates.io/crates/hidapi) — HID access
+- [apex-tux](https://github.com/not-jan/apex-tux) and apex7tkl_linux — keyboard inspiration
