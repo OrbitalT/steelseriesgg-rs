@@ -93,7 +93,10 @@ pub mod product_ids {
     // Keyboards - Apex Series
     pub const APEX_PRO: u16 = 0x1610;
     pub const APEX_PRO_TKL: u16 = 0x1614;
-    pub const APEX_PRO_TKL_2023: u16 = 0x1618;
+    // NOTE: On actual Apex Pro TKL (2023) hardware we observe PID 0x1628.
+    // The previously documented 0x1618 value does not match the device on this
+    // system, so we treat 0x1628 as the canonical 2023 TKL PID here.
+    pub const APEX_PRO_TKL_2023: u16 = 0x1628;
     pub const APEX_3: u16 = 0x161A;
     pub const APEX_3_TKL: u16 = 0x1622;
     pub const APEX_5: u16 = 0x161C;
