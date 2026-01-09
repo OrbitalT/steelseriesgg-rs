@@ -25,15 +25,14 @@ prepare() {
 
 build() {
   cd "steelseriesgg-rs-$pkgver"
-  export RUSTUP_TOOLCHAIN=nightly CARGO_TARGET_DIR=target
+  export CARGO_TARGET_DIR=target
   # Build with default features only (no audio/sonar dependencies)
-  cargo +nightly build -r --frozen
+  cargo build --release --frozen
 }
 
 check() {
   cd "steelseriesgg-rs-$pkgver"
-  export RUSTUP_TOOLCHAIN=nightly
-  cargo +nightly test --frozen
+  cargo test --frozen
 }
 
 package() {

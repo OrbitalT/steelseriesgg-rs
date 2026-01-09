@@ -2,15 +2,10 @@
 # SteelSeries device permissions for user access
 # Sources: apex-tux, apex7tkl_linux, steelseries-linux
 
-# Generic input group access (restricted to SteelSeries devices)
-SUBSYSTEM=="input", ATTRS{idVendor}=="1038", GROUP="input", MODE="0660"
-
-# Vendor-wide USB and HID access
-SUBSYSTEM=="input", GROUP="input", MODE="0660"
-
-# Vendor-wide USB and HID access
+# SteelSeries-specific USB and HID access
 SUBSYSTEM=="usb", ATTRS{idVendor}=="1038", GROUP="input", MODE="0660"
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1038", GROUP="input", MODE="0660"
+SUBSYSTEM=="input", ATTRS{idVendor}=="1038", GROUP="input", MODE="0660"
 
 # External script hook (requires steelseries-perms.py in same dir)
 # ACTION=="add", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1038", RUN+="/etc/udev/rules.d/steelseries-perms.py '%E{DEVNAME}'"

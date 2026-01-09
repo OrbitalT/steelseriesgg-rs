@@ -16,7 +16,8 @@ use crate::{Error, Result};
 #[cfg(feature = "sonar")]
 pub use sonar::SonarClient;
 
-#[cfg(feature = "audio")]
+// Channel types are used by both audio and sonar features
+#[cfg(any(feature = "audio", feature = "sonar"))]
 /// Audio channel identifier.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Channel {
@@ -34,6 +35,7 @@ pub enum Channel {
     Mic,
 }
 
+#[cfg(any(feature = "audio", feature = "sonar"))]
 impl std::fmt::Display for Channel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -57,6 +59,7 @@ pub struct ChannelState {
     pub muted: bool,
 }
 
+#[cfg(feature = "audio")]
 impl Default for ChannelState {
     fn default() -> Self {
         Self {
@@ -86,6 +89,7 @@ pub struct MixerState {
     pub chat_mix: f32,
 }
 
+#[cfg(feature = "audio")]
 impl Default for MixerState {
     fn default() -> Self {
         let mut channels = HashMap::new();
@@ -119,12 +123,12 @@ pub struct AudioMixer {
     _pulse: Option<()>, // Placeholder for pulse connection
 }
 
+#[cfg(feature = "audio")]
 impl AudioMixer {
     /// Create a new audio mixer.
     pub fn new() -> Result<Self> {
         Ok(Self {
             state: MixerState::default(),
-            #[cfg(feature = "audio")]
             _pulse: None,
         })
     }
@@ -313,6 +317,7 @@ pub struct AudioRouter {
     routes: Vec<AppRoute>,
 }
 
+#[cfg(feature = "audio")]
 impl AudioRouter {
     /// Create a new audio router.
     pub fn new() -> Self {
@@ -342,6 +347,7 @@ impl AudioRouter {
     }
 }
 
+#[cfg(feature = "audio")]
 impl Default for AudioRouter {
     fn default() -> Self {
         Self::new()
