@@ -28,7 +28,10 @@ pub mod audio;
 pub use error::{Error, Result};
 
 /// SteelSeries USB Vendor ID
+/// TODO: try to parse from lsusb
+
 pub const STEELSERIES_VENDOR_ID: u16 = 0x1038;
+pub const STEELSERIES_PRODUCT_ID: u16 = 0x1628;
 
 /// Re-export commonly used types
 pub mod prelude {
