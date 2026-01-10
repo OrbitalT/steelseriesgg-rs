@@ -30,7 +30,7 @@ systemctl --user enable --now ssgg.service
 - **Audio mixer** (feature `audio`): domain model, PulseAudio/PipeWire wiring planned
 - **Sonar API** (feature `sonar`): control SteelSeries Sonar via HTTP (Sonar must be running)
 
-## Supported Devices
+## Supported Devices **WIP**
 
 ### Keyboards
 - Apex Pro / Apex Pro TKL / Apex Pro TKL 2023
