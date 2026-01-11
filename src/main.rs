@@ -71,6 +71,12 @@ enum Commands {
         action: SonarAction,
     },
 
+    /// Configure USB polling rate (requires sudo)
+    Pollrate {
+        #[command(subcommand)]
+        action: PollrateAction,
+    },
+
     /// Start the GameSense server
     Server {
         /// Port to listen on
@@ -225,6 +231,34 @@ enum StreamerAction {
     },
 }
 
+#[derive(Subcommand)]
+enum PollrateAction {
+    /// Set mouse polling rate
+    Mouse {
+        /// Polling rate in Hz (125, 500, 1000, 2000, 4000)
+        /// Note: Rates above 1000Hz require hardware support
+        rate: u32,
+
+        /// Save to config and apply on daemon startup
+        #[arg(long)]
+        persistent: bool,
+    },
+
+    /// Set keyboard polling rate
+    Keyboard {
+        /// Polling rate in Hz (125, 500, 1000, 2000, 4000)
+        /// Note: Rates above 1000Hz require hardware support
+        rate: u32,
+
+        /// Save to config and apply on daemon startup
+        #[arg(long)]
+        persistent: bool,
+    },
+
+    /// Show current polling rates
+    Status,
+}
+
 fn parse_color(s: &str) -> Option<Color> {
     // Try named colors
     let s_lower = s.to_ascii_lowercase();
@@ -309,6 +343,10 @@ async fn main() -> anyhow::Result<()> {
         #[cfg(feature = "sonar")]
         Commands::Sonar { action } => {
             cmd_sonar(action).await?;
+        }
+
+        Commands::Pollrate { action } => {
+            cmd_pollrate(action)?;
         }
 
         Commands::Server { port } => {
@@ -508,6 +546,80 @@ fn cmd_profile(action: ProfileAction) -> anyhow::Result<()> {
         ProfileAction::Delete { name } => {
             profile_manager.delete(&name)?;
             println!("Profile deleted: {}", name);
+        }
+    }
+
+    Ok(())
+}
+
+fn cmd_pollrate(action: PollrateAction) -> anyhow::Result<()> {
+    use steelseries_gg::pollrate::{get_poll_rate, set_poll_rate, DeviceType, PollRate};
+
+    match action {
+        PollrateAction::Mouse { rate, persistent } => {
+            let poll_rate = PollRate::from_hz(rate)?;
+
+            // Warn about hardware requirements for high poll rates
+            if poll_rate.requires_hardware_support() {
+                println!(
+                    "⚠ Warning: {} requires hardware support",
+                    poll_rate.description()
+                );
+                println!("  Your mouse may not support this rate or may ignore the setting.");
+                println!();
+            }
+
+            set_poll_rate(DeviceType::Mouse, poll_rate)?;
+            println!("Mouse polling rate set to {} Hz", rate);
+
+            if persistent {
+                let mut config = Config::load()?;
+                config.poll_rate.mouse_hz = Some(rate);
+                config.save()?;
+                println!("Setting saved to config (will apply on daemon startup)");
+            }
+        }
+
+        PollrateAction::Keyboard { rate, persistent } => {
+            let poll_rate = PollRate::from_hz(rate)?;
+
+            // Warn about hardware requirements for high poll rates
+            if poll_rate.requires_hardware_support() {
+                println!(
+                    "⚠ Warning: {} requires hardware support",
+                    poll_rate.description()
+                );
+                println!("  Your keyboard may not support this rate or may ignore the setting.");
+                println!();
+            }
+
+            set_poll_rate(DeviceType::Keyboard, poll_rate)?;
+            println!("Keyboard polling rate set to {} Hz", rate);
+
+            if persistent {
+                let mut config = Config::load()?;
+                config.poll_rate.keyboard_hz = Some(rate);
+                config.save()?;
+                println!("Setting saved to config (will apply on daemon startup)");
+            }
+        }
+
+        PollrateAction::Status => {
+            println!("Current USB Polling Rates:");
+            println!();
+
+            match get_poll_rate(DeviceType::Mouse) {
+                Ok(rate) => println!("  Mouse:    {} Hz", rate.to_hz()),
+                Err(e) => println!("  Mouse:    Error: {}", e),
+            }
+
+            match get_poll_rate(DeviceType::Keyboard) {
+                Ok(rate) => println!("  Keyboard: {} Hz", rate.to_hz()),
+                Err(e) => println!("  Keyboard: Error: {}", e),
+            }
+
+            println!();
+            println!("Note: Changes require root privileges (sudo)");
         }
     }
 
@@ -740,6 +852,29 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
 
     let config = Config::load()?;
     let mut state_store = DeviceStateStore::new()?;
+
+    // Apply saved polling rates
+    {
+        use steelseries_gg::pollrate::{set_poll_rate, DeviceType, PollRate};
+
+        if let Some(mouse_hz) = config.poll_rate.mouse_hz {
+            if let Ok(rate) = PollRate::from_hz(mouse_hz) {
+                match set_poll_rate(DeviceType::Mouse, rate) {
+                    Ok(()) => info!("Applied mouse poll rate: {} Hz", mouse_hz),
+                    Err(e) => tracing::warn!("Failed to set mouse poll rate: {}", e),
+                }
+            }
+        }
+
+        if let Some(keyboard_hz) = config.poll_rate.keyboard_hz {
+            if let Ok(rate) = PollRate::from_hz(keyboard_hz) {
+                match set_poll_rate(DeviceType::Keyboard, rate) {
+                    Ok(()) => info!("Applied keyboard poll rate: {} Hz", keyboard_hz),
+                    Err(e) => tracing::warn!("Failed to set keyboard poll rate: {}", e),
+                }
+            }
+        }
+    }
 
     // Initialize daemon state
     let daemon_state = Arc::new(RwLock::new(DaemonState::new()));

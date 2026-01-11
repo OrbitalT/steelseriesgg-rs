@@ -19,6 +19,7 @@ pub mod device_state;
 pub mod devices;
 pub mod error;
 pub mod gamesense;
+pub mod pollrate;
 pub mod profiles;
 pub mod rgb;
 
@@ -29,7 +30,6 @@ pub use error::{Error, Result};
 
 /// SteelSeries USB Vendor ID
 /// TODO: try to parse from lsusb
-
 pub const STEELSERIES_VENDOR_ID: u16 = 0x1038;
 pub const STEELSERIES_PRODUCT_ID: u16 = 0x1628;
 

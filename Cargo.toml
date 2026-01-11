@@ -26,7 +26,7 @@ sonar = ["dep:reqwest"]
 anyhow = "1.0"
 
 # HTTP server for GameSense API
-axum = "0.8"
+axum = { version = "0.8", default-features = false, features = ["tokio", "http1", "json"] }
 
 # CLI
 clap = { version = "4.5", features = ["derive"] }
@@ -34,6 +34,7 @@ clap = { version = "4.5", features = ["derive"] }
 # Configuration
 directories = "6.0"
 hidapi = "=2.6.4" # Pinned to avoid build issues with 2.6.4 requiring libudev-dev
+libc = "0.2" # For root permission checks (geteuid)
 libpulse-binding = { version = "2.30.1", optional = true }
 
 # HTTP client for Sonar API (optional, only needed for sonar feature)
@@ -45,22 +46,23 @@ serde_json = "1.0"
 
 # Error handling
 thiserror = "2.0"
-# Async runtime
-tokio = { version = "1.49", features = ["rt-multi-thread", "macros", "signal"] }
+# Async runtime - only include needed features to reduce binary size
+tokio = { version = "1.49", default-features = false, features = ["rt-multi-thread", "macros", "signal"] }
 toml = "0.9"
-tower-http = { version = "0.6", features = ["cors"] }
+tower-http = { version = "0.6", default-features = false, features = ["cors"] }
 
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [profile.release]
-strip = true
-lto = true
-codegen-units = 1
-panic = "abort"
-opt-level = 3
-debug = 0
+strip = true           # Remove debug symbols
+lto = "fat"            # Full link-time optimization across all crates
+codegen-units = 1      # Single codegen unit for better optimization
+panic = "abort"        # Don't generate unwinding code
+opt-level = "z"        # Optimize for size instead of speed
+debug = 0              # No debug info
+overflow-checks = false # Disable integer overflow checks in release
 
 [profile.dev]
 debug = 0

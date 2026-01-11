@@ -15,3 +15,6 @@ tmp/
 .vscode/settings.json
 .summary_files/
 .claude/
+.claude-dev-helper/
+.pair-programming-session.md
+nohup.out

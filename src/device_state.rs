@@ -6,13 +6,22 @@
 //! are missing to avoid collisions across multiple identical devices.
 
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
 use crate::config::Config;
 use crate::devices::DeviceInfo;
 use crate::rgb::Effect;
 use crate::{Error, Result};
+
+/// Hash a device path to a stable 32-bit value for serialization.
+fn hash_path(path: &str) -> u32 {
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    hasher.finish() as u32
+}
 
 /// Unique identifier for a device.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Deserialize, Serialize)]
@@ -84,6 +93,54 @@ fn headset_states_equal(a: &HeadsetState, b: &HeadsetState) -> bool {
         && a.auto_off_minutes == b.auto_off_minutes
 }
 
+impl DeviceId {
+    /// Convert DeviceId to a stable string key for JSON serialization.
+    ///
+    /// Format: `{vendor_id:04x}:{product_id:04x}:{interface}:{serial}:{path_hash}`
+    pub fn to_key(&self) -> String {
+        let serial = self.serial_number.as_deref().unwrap_or("none");
+        let path_hash = self
+            .path
+            .as_ref()
+            .map(|p| format!("{:08x}", hash_path(p)))
+            .unwrap_or_else(|| "none".to_string());
+
+        format!(
+            "{:04x}:{:04x}:{}:{}:{}",
+            self.vendor_id, self.product_id, self.interface_number, serial, path_hash
+        )
+    }
+
+    /// Parse a DeviceId from a string key (reverse of to_key).
+    pub fn from_key(key: &str) -> Result<Self> {
+        let parts: Vec<&str> = key.split(':').collect();
+        if parts.len() != 5 {
+            return Err(Error::InvalidConfig(format!("Invalid device key: {}", key)));
+        }
+
+        Ok(Self {
+            vendor_id: u16::from_str_radix(parts[0], 16)
+                .map_err(|e| Error::InvalidConfig(format!("Invalid vendor_id: {}", e)))?,
+            product_id: u16::from_str_radix(parts[1], 16)
+                .map_err(|e| Error::InvalidConfig(format!("Invalid product_id: {}", e)))?,
+            interface_number: parts[2]
+                .parse()
+                .map_err(|e| Error::InvalidConfig(format!("Invalid interface: {}", e)))?,
+            serial_number: if parts[3] == "none" {
+                None
+            } else {
+                Some(parts[3].to_string())
+            },
+            path: if parts[4] == "none" {
+                None
+            } else {
+                // Can't recover original path from hash, so keep it as None
+                None
+            },
+        })
+    }
+}
+
 impl From<&DeviceInfo> for DeviceId {
     fn from(info: &DeviceInfo) -> Self {
         Self {
@@ -150,6 +207,21 @@ pub struct DeviceState {
     pub headset: Option<HeadsetState>,
 }
 
+/// Wrapper for serializing HashMap<DeviceId, DeviceState> to JSON with string keys.
+#[derive(Deserialize, Serialize)]
+#[serde(transparent)]
+struct SerializableStates(HashMap<String, DeviceState>);
+
+impl From<&HashMap<DeviceId, DeviceState>> for SerializableStates {
+    fn from(states: &HashMap<DeviceId, DeviceState>) -> Self {
+        let map = states
+            .iter()
+            .map(|(id, state)| (id.to_key(), state.clone()))
+            .collect();
+        SerializableStates(map)
+    }
+}
+
 /// Manager for device state persistence.
 pub struct DeviceStateStore {
     states: HashMap<DeviceId, DeviceState>,
@@ -185,13 +257,28 @@ impl DeviceStateStore {
     /// Load device states from disk.
     fn load(&mut self) -> Result<()> {
         let content = std::fs::read_to_string(&self.state_file)?;
+
+        // Try new format first (string-keyed map)
+        if let Ok(serializable) = serde_json::from_str::<SerializableStates>(&content) {
+            // Convert back to DeviceId-keyed map
+            self.states = serializable
+                .0
+                .into_iter()
+                .filter_map(|(key, state)| DeviceId::from_key(&key).ok().map(|id| (id, state)))
+                .collect();
+            return Ok(());
+        }
+
+        // Try legacy format (direct HashMap<DeviceId, DeviceState>) for backward compat
+        // This will likely fail on current broken files, which is expected
         self.states = serde_json::from_str(&content)?;
         Ok(())
     }
 
     /// Save device states to disk.
     fn save(&self) -> Result<()> {
-        let content = serde_json::to_string_pretty(&self.states)?;
+        let serializable = SerializableStates::from(&self.states);
+        let content = serde_json::to_string_pretty(&serializable)?;
         std::fs::write(&self.state_file, content)?;
         Ok(())
     }

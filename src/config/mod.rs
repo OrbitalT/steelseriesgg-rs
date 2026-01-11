@@ -6,6 +6,16 @@ use std::path::PathBuf;
 
 use crate::Result;
 
+/// USB polling rate configuration.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct PollRateConfig {
+    /// Mouse polling rate in Hz (125, 500, or 1000)
+    pub mouse_hz: Option<u32>,
+
+    /// Keyboard polling rate in Hz (125, 500, or 1000)
+    pub keyboard_hz: Option<u32>,
+}
+
 /// Application configuration.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Config {
@@ -21,6 +31,9 @@ pub struct Config {
 
     /// Enable debug logging
     pub debug: bool,
+
+    /// USB polling rate settings
+    pub poll_rate: PollRateConfig,
 }
 
 /// GameSense server configuration.

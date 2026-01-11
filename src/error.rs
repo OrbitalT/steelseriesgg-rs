@@ -48,6 +48,10 @@ pub enum Error {
     #[error("Audio error: {0}")]
     Audio(String),
 
+    /// Permission denied (requires root/sudo)
+    #[error("Permission denied: {0}")]
+    PermissionDenied(String),
+
     /// Unsupported device
     #[error("Unsupported device: vendor={vendor_id:#06x}, product={product_id:#06x}")]
     UnsupportedDevice { vendor_id: u16, product_id: u16 },
