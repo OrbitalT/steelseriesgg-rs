@@ -1,0 +1,1 @@
+- https://github.com/jtroo/kanata/blob/main/docs/setup-linux.md
