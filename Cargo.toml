@@ -55,7 +55,7 @@ tower-http = { version = "0.6", default-features = false, features = ["cors"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# todo: add "parking_lot, evdev"
+# todo: add "parking_lot, evdev, log"
 
 [profile.release]
 strip = true           # Remove debug symbols
