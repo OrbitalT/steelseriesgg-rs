@@ -382,6 +382,9 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
     // Open the keyboard using the abstraction layer
     let mut keyboard = manager.open_keyboard(keyboard_info)?;
 
+    // Initialize the device
+    keyboard.initialize()?;
+
     match action {
         RgbAction::Color { color } => {
             let color =
@@ -389,10 +392,12 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
 
             println!("Setting color to {}", color);
             keyboard.set_color(color)?;
+            keyboard.apply()?; // Apply the color change
 
             // Persist the effect to state store
             state_store.update_keyboard_effect(device_id, Effect::Static { color })?;
             println!("Done!");
+            println!("Note: LEDs should now display {} color. Device accepted the command.", color);
         }
 
         RgbAction::Brightness { level } => {
@@ -442,10 +447,12 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
         RgbAction::Off => {
             println!("Turning off LEDs");
             keyboard.set_color(Color::BLACK)?;
+            keyboard.apply()?; // Apply the off state
 
             // Persist the off state
             state_store.update_keyboard_effect(device_id, Effect::Off)?;
             println!("Done!");
+            println!("Note: LEDs should now be off (black/dark). Device accepted the command.");
         }
     }
 

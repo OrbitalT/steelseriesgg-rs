@@ -121,9 +121,15 @@ impl DeviceManager {
             DeviceType::Unknown => info.interface_number,
         };
 
+        debug!(
+            "Opening device: {} (VID:{:#06x}, PID:{:#06x}, Interface:{})",
+            info.name, info.vendor_id, info.product_id, control_interface
+        );
+
         // Use cache for O(1) lookup instead of O(n) iteration
         let cache_key = (info.vendor_id, info.product_id, control_interface);
         if let Some(path) = self.device_cache.get(&cache_key) {
+            debug!("Using cached device path: {}", path);
             // Try to open by path directly - convert String to CStr
             use std::ffi::CString;
             let c_path = CString::new(path.as_str())
@@ -171,32 +177,67 @@ impl DeviceManager {
 
 /// Print a summary of connected devices.
 pub fn print_device_summary(manager: &DeviceManager) {
-    let mut devices = manager.devices();
+    let devices = manager.devices();
 
     if devices.is_empty() {
         println!("No SteelSeries devices found.");
         return;
     }
 
-    // Sort for stable output: by type, then name, then interface
-    devices.sort_by(|a, b| {
-        a.device_type
-            .cmp(&b.device_type)
-            .then_with(|| a.name.cmp(&b.name))
-            .then_with(|| a.interface_number.cmp(&b.interface_number))
+    // Group by (vendor_id, product_id, serial_number)
+    let mut grouped: HashMap<(u16, u16, Option<String>), Vec<DeviceInfo>> = HashMap::new();
+
+    for device in devices {
+        let key = (
+            device.vendor_id,
+            device.product_id,
+            device.serial_number.clone(),
+        );
+        grouped
+            .entry(key)
+            .or_insert_with(Vec::new)
+            .push(device.clone());
+    }
+
+    // Convert to sorted vec
+    let mut device_groups: Vec<_> = grouped.into_iter().collect();
+    device_groups.sort_by(|a, b| {
+        let dev_a = &a.1[0]; // First device in group
+        let dev_b = &b.1[0];
+        dev_a
+            .device_type
+            .cmp(&dev_b.device_type)
+            .then_with(|| dev_a.name.cmp(&dev_b.name))
+            .then_with(|| dev_a.interface_number.cmp(&dev_b.interface_number))
     });
 
-    println!("Found {} SteelSeries device(s):\n", devices.len());
+    println!("Found {} SteelSeries device(s):\n", device_groups.len());
 
-    for (i, device) in devices.iter().enumerate() {
+    for (i, (_key, mut interfaces)) in device_groups.into_iter().enumerate() {
+        // Sort interfaces within group
+        interfaces.sort_by_key(|d| d.interface_number);
+
+        let device = &interfaces[0]; // Representative device
+
         println!("  {}. {} [{}]", i + 1, device.name, device.device_type);
+
+        // Collect interface numbers as comma-separated string
+        let interface_list: Vec<String> = interfaces
+            .iter()
+            .map(|d| d.interface_number.to_string())
+            .collect();
+
         println!(
-            "     VID: {:#06x}, PID: {:#06x}, Interface: {}",
-            device.vendor_id, device.product_id, device.interface_number
+            "     VID: {:#06x}, PID: {:#06x}, Interfaces: {}",
+            device.vendor_id,
+            device.product_id,
+            interface_list.join(", ")
         );
+
         if let Some(ref serial) = device.serial_number {
             println!("     Serial: {}", serial);
         }
+
         println!();
     }
 }

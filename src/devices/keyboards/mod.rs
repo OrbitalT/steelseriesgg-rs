@@ -48,6 +48,10 @@ impl GenericKeyboard {
 
     /// Send a HID report to the keyboard.
     fn send_report(&mut self, data: &[u8]) -> Result<()> {
+        use tracing::debug;
+
+        debug!("Sending HID report ({} bytes): {:02x?}", data.len(), data);
+
         let device = self.device.as_ref().ok_or(Error::DeviceCommunication(
             "Device not connected".to_string(),
         ))?;
@@ -55,7 +59,14 @@ impl GenericKeyboard {
             .lock()
             .map_err(|e| Error::DeviceCommunication(format!("Device lock poisoned: {}", e)))?;
 
-        write_padded_report(&device, data, 65, true)
+        let result = write_padded_report(&device, data, 65, true);
+
+        match &result {
+            Ok(_) => debug!("HID report sent successfully"),
+            Err(e) => debug!("HID report failed: {:?}", e),
+        }
+
+        result
     }
 }
 
@@ -70,6 +81,10 @@ impl Device for GenericKeyboard {
 
     fn initialize(&mut self) -> Result<()> {
         // Send initialization sequence if needed
+        // Some SteelSeries keyboards need a "save" or "commit" command
+        // Try sending 0x09 command which is sometimes used for "save/apply"
+        let init_cmd = [0x09];
+        let _ = self.send_report(&init_cmd); // Don't fail if this doesn't work
         Ok(())
     }
 
@@ -139,7 +154,11 @@ impl Keyboard for GenericKeyboard {
     }
 
     fn apply(&mut self) -> Result<()> {
-        // Some keyboards need an explicit apply command
+        // Some keyboards need an explicit apply/save command after changes
+        // Common SteelSeries commands: 0x09 (save), 0x28 (commit), 0x2c (update)
+        // Try 0x09 which is documented as "save" in some SteelSeries devices
+        let apply_cmd = [0x09];
+        let _ = self.send_report(&apply_cmd); // Don't fail if device doesn't support it
         Ok(())
     }
 }

@@ -1,61 +1,61 @@
 [
   {
-    "filePath": "/home/lucy/Projects/steelseriesgg-rs/src/lib.rs",
-    "timestamp": 1768090728110,
+    "filePath": "/home/lucy/Projects/steelseriesgg-rs/MANDATORY_LED_VERIFICATION.md",
+    "timestamp": 1768185394113,
     "focus": false,
     "openLocation": 0
   },
   {
-    "filePath": "/home/lucy/Projects/steelseriesgg-rs/Cargo.toml",
-    "timestamp": 1768156989671,
+    "filePath": "/home/lucy/Projects/steelseriesgg-rs/RALPH_LOOP_LIMITATION.md",
+    "timestamp": 1768185423001,
     "focus": false,
     "openLocation": 0
   },
   {
-    "filePath": "/home/lucy/Projects/steelseriesgg-rs/Cargo.toml",
-    "timestamp": 1768157001490,
+    "filePath": "/home/lucy/Projects/steelseriesgg-rs/src/main.rs",
+    "timestamp": 1768185468912,
     "focus": false,
     "openLocation": 0
   },
   {
-    "filePath": "/home/lucy/Projects/steelseriesgg-rs/Cargo.toml",
-    "timestamp": 1768157007512,
+    "filePath": "/home/lucy/Projects/steelseriesgg-rs/src/main.rs",
+    "timestamp": 1768185476626,
     "focus": false,
     "openLocation": 0
   },
   {
-    "filePath": "/home/lucy/Projects/steelseriesgg-rs/Cargo.toml",
-    "timestamp": 1768157012455,
+    "filePath": "/home/lucy/Projects/steelseriesgg-rs/FINAL_STATUS.md",
+    "timestamp": 1768185548129,
     "focus": false,
     "openLocation": 0
   },
   {
-    "filePath": "/home/lucy/Projects/steelseriesgg-rs/OPTIMIZATION_REPORT.md",
-    "timestamp": 1768157239103,
+    "filePath": "/home/lucy/Projects/steelseriesgg-rs/src/main.rs",
+    "timestamp": 1768185578937,
     "focus": false,
     "openLocation": 0
   },
   {
-    "filePath": "/home/lucy/Projects/steelseriesgg-rs/DEPENDENCY_AUDIT_REPORT.md",
-    "timestamp": 1768164626441,
+    "filePath": "/home/lucy/Projects/steelseriesgg-rs/src/devices/keyboards/mod.rs",
+    "timestamp": 1768185596566,
     "focus": false,
     "openLocation": 0
   },
   {
-    "filePath": "/home/lucy/Projects/steelseriesgg-rs/DEPENDENCY_AUDIT_REPORT.md",
-    "timestamp": 1768164686882,
+    "filePath": "/home/lucy/Projects/steelseriesgg-rs/src/devices/keyboards/mod.rs",
+    "timestamp": 1768185605125,
     "focus": false,
     "openLocation": 0
   },
   {
-    "filePath": "/home/lucy/Projects/steelseriesgg-rs/DEPENDENCY_AUDIT_REPORT.md",
-    "timestamp": 1768164696000,
+    "filePath": "/home/lucy/Projects/steelseriesgg-rs/ACKNOWLEDGMENT.txt",
+    "timestamp": 1768185674709,
     "focus": false,
     "openLocation": 0
   },
   {
-    "filePath": "/home/lucy/Projects/steelseriesgg-rs/DEPENDENCY_AUDIT_REPORT.md",
-    "timestamp": 1768164705453,
+    "filePath": "/home/lucy/Projects/steelseriesgg-rs/test_device_response.sh",
+    "timestamp": 1768185695055,
     "focus": false,
     "openLocation": 0
   }

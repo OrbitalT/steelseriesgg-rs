@@ -97,6 +97,8 @@ pub fn write_padded_report(
     report_len: usize,
     include_report_id: bool,
 ) -> Result<()> {
+    use tracing::debug;
+
     if report_len == 0 || report_len > 65 {
         return Err(Error::DeviceCommunication(format!(
             "Invalid report length {} (expected 1-65)",
@@ -112,6 +114,13 @@ pub fn write_padded_report(
     if copy_len > 0 {
         report[offset..offset + copy_len].copy_from_slice(&data[..copy_len]);
     }
+
+    debug!(
+        "Writing HID report: len={}, offset={}, data={:02x?}",
+        effective_len,
+        offset,
+        &report[..effective_len.min(32)]  // Show first 32 bytes to avoid log spam
+    );
 
     device.write(&report[..effective_len])?;
     Ok(())
