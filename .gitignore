@@ -18,3 +18,7 @@ tmp/
 .claude-dev-helper/
 .pair-programming-session.md
 nohup.out
+.plugin-config
+
+# Session/temporary documentation (moved to docs/archive)
+docs/archive/

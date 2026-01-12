@@ -195,7 +195,7 @@ pub fn print_device_summary(manager: &DeviceManager) {
         );
         grouped
             .entry(key)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(device.clone());
     }
 

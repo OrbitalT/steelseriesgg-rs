@@ -218,8 +218,10 @@ impl EffectEngine {
     pub fn compute(&mut self) -> &[Color] {
         let elapsed = self.start_time.elapsed();
 
-        // Return cached colors if delta is below threshold
-        if elapsed.saturating_sub(self.last_compute_time) < self.cache_threshold {
+        // Return cached colors if delta is below threshold (but always compute on first call)
+        if self.last_compute_time != Duration::ZERO
+            && elapsed.saturating_sub(self.last_compute_time) < self.cache_threshold
+        {
             return &self.cached_colors;
         }
 
