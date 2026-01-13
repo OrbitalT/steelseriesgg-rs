@@ -1,2 +1,3 @@
 - https://github.com/jtroo/kanata/blob/main/docs/setup-linux.md
 - https://crates.io/crates/usbd-human-interface-device
+- https://crates.io/crates/kanata-keyberon
