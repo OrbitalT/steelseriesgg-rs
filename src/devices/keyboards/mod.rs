@@ -24,6 +24,15 @@ pub trait Keyboard: Device {
 
     /// Apply the current RGB settings.
     fn apply(&mut self) -> Result<()>;
+
+    /// Read current actuation point setting from keyboard (if supported).
+    ///
+    /// **NOTE**: This is currently a placeholder. The HID command to read
+    /// actuation settings has not yet been discovered. This function always
+    /// returns an error indicating the feature is not implemented.
+    ///
+    /// Returns actuation point in 0.1mm units (e.g., 4 = 0.4mm, 36 = 3.6mm).
+    fn read_actuation_point(&mut self) -> Result<u8>;
 }
 
 /// Generic SteelSeries keyboard implementation.
@@ -160,5 +169,21 @@ impl Keyboard for GenericKeyboard {
         let apply_cmd = [0x09];
         let _ = self.send_report(&apply_cmd); // Don't fail if device doesn't support it
         Ok(())
+    }
+
+    fn read_actuation_point(&mut self) -> Result<u8> {
+        // PLACEHOLDER: HID command to read actuation point not yet discovered
+        //
+        // When the read command is discovered, implementation should:
+        // 1. Send query command (e.g., [0xXX] where XX is the read command byte)
+        // 2. Call self.receive_raw() to read response
+        // 3. Parse response to extract actuation value
+        // 4. Return value in 0.1mm units (4 = 0.4mm, 36 = 3.6mm)
+        //
+        // For now, return DeviceCommunication error
+        Err(Error::DeviceCommunication(
+            "Reading actuation point not yet implemented - HID read command not discovered"
+                .to_string(),
+        ))
     }
 }

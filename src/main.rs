@@ -1064,13 +1064,16 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
                 continue;
             }
 
+            // Clone overlays to avoid borrowing conflicts
+            let overlays = state.gamesense_overlays.clone();
+
             for (serial, (keyboard, controller, _info)) in state.keyboards.iter_mut() {
                 let mut colors = controller.compute_colors();
 
                 // Apply GameSense overlays using simple zone mapping.
-                if !state.gamesense_overlays.is_empty() {
+                if !overlays.is_empty() {
                     let zone_count = colors.len();
-                    for (zone, (overlay_color, _)) in state.gamesense_overlays.iter() {
+                    for (zone, (overlay_color, _)) in overlays.iter() {
                         match parse_zone_number(zone) {
                             None => {
                                 // Apply to all zones

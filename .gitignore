@@ -17,6 +17,7 @@ tmp/
 .claude/
 .claude-dev-helper/
 .pair-programming-session.md
+.planning/
 nohup.out
 .plugin-config
 

@@ -1,0 +1,96 @@
+{
+  "project": {
+    "name": "steelseries-gg-linux",
+    "version": "0.1.0",
+    "description": "A complete open-source SteelSeries GG replacement for Linux",
+    "repository": "https://github.com/Ven0m0/steelseriesgg-rs",
+    "license": "MIT",
+    "language": "Rust",
+    "edition": "2021"
+  },
+  "generated": "2026-01-15T22:18:42Z",
+  "metrics": {
+    "total_lines": 5513,
+    "source_files": 20,
+    "test_files": 2,
+    "test_lines": 290,
+    "public_apis": 162,
+    "documentation_files": 20
+  },
+  "entry_points": {
+    "cli": "src/main.rs",
+    "library": "src/lib.rs",
+    "binary": "ssgg",
+    "tests": ["src/rgb/tests.rs", "src/profiles/tests.rs"]
+  },
+  "modules": {
+    "devices": {
+      "path": "src/devices/mod.rs",
+      "purpose": "USB HID device discovery and communication",
+      "exports": ["Device", "DeviceInfo", "DeviceManager", "DeviceType"],
+      "submodules": ["keyboards", "headsets", "discovery"]
+    },
+    "rgb": {
+      "path": "src/rgb/mod.rs",
+      "purpose": "RGB lighting effects and color management",
+      "exports": ["Color", "Effect", "RgbController", "EffectEngine"],
+      "test_lines": 181
+    },
+    "gamesense": {
+      "path": "src/gamesense/mod.rs",
+      "purpose": "HTTP API server for game integration",
+      "exports": ["GameSenseServer", "GameMetadata", "GameEvent"],
+      "port": 27301
+    },
+    "audio": {
+      "path": "src/audio/mod.rs",
+      "purpose": "PulseAudio and Sonar API integration",
+      "exports": ["AudioMixer", "SonarClient", "Channel"],
+      "feature_gated": ["audio", "sonar"]
+    },
+    "profiles": {
+      "path": "src/profiles/mod.rs",
+      "purpose": "Device configuration management",
+      "exports": ["Profile", "KeyboardProfile", "ProfileManager"],
+      "test_lines": 109
+    },
+    "config": {
+      "path": "src/config/mod.rs",
+      "purpose": "Application configuration management",
+      "exports": ["Config", "GameSenseConfig", "AudioConfig"]
+    }
+  },
+  "dependencies": {
+    "core": {
+      "axum": "0.8",
+      "tokio": "1.49",
+      "hidapi": "2.6.4",
+      "clap": "4.5",
+      "serde": "1.0",
+      "thiserror": "2.0",
+      "tracing": "0.1"
+    },
+    "optional": {
+      "libpulse-binding": "2.30.1",
+      "reqwest": "0.13"
+    }
+  },
+  "features": {
+    "default": [],
+    "audio": ["dep:libpulse-binding"],
+    "sonar": ["dep:reqwest"]
+  },
+  "architecture": {
+    "pattern": "CLI application with embedded HTTP server",
+    "runtime": "tokio async multi-threaded",
+    "protocol": "USB HID (65-byte reports)",
+    "api": "GameSense HTTP API on port 27301",
+    "config": "TOML files in ~/.config/ssgg/"
+  },
+  "constants": {
+    "STEELSERIES_VENDOR_ID": "0x1038",
+    "HID_REPORT_SIZE": 65,
+    "GAMESENSE_DEFAULT_PORT": 27301,
+    "CACHE_THRESHOLD_MS": 16
+  }
+}

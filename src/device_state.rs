@@ -297,19 +297,20 @@ impl DeviceStateStore {
 
     /// Get mutable reference to device state.
     pub fn get_mut(&mut self, id: &DeviceId) -> Option<&mut DeviceState> {
-        // Try exact match first (single lookup)
-        if let Some(state) = self.states.get_mut(id) {
-            return Some(state);
-        }
+        // First, determine which key to use (without any mutable borrows)
+        let key = if self.states.contains_key(id) {
+            // Exact match exists
+            Some(id.clone())
+        } else {
+            // Fall back to loose matching
+            self.states
+                .keys()
+                .find(|existing| Self::id_loosely_matches(existing, id))
+                .cloned()
+        };
 
-        // Fall back to loose matching
-        let key = self
-            .states
-            .keys()
-            .find(|existing| Self::id_loosely_matches(existing, id))
-            .cloned();
-
-        key.and_then(move |k| self.states.get_mut(&k))
+        // Now get mutable reference using the found key
+        key.and_then(|k| self.states.get_mut(&k))
     }
 
     /// Get or create device state.
