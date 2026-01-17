@@ -20,19 +20,30 @@ use crate::{Error, Result};
 pub type RgbCallback = Box<dyn Fn(&str, u8, u8, u8) + Send + Sync>;
 
 /// Shared server state.
-#[derive(Default)]
 pub struct ServerState {
-    /// Registered games.
+    /// Registered games - pre-allocate capacity for typical usage
     pub games: HashMap<String, GameMetadata>,
 
-    /// Event bindings per game.
+    /// Event bindings per game - use nested HashMap with better initial capacity
     pub bindings: HashMap<String, HashMap<String, EventBinding>>,
 
-    /// Last event values.
+    /// Last event values - optimize for frequent access
     pub event_values: HashMap<String, HashMap<String, i32>>,
 
     /// Callback for RGB updates.
     pub rgb_callback: Option<RgbCallback>,
+}
+
+impl Default for ServerState {
+    fn default() -> Self {
+        Self {
+            // Pre-allocate reasonable capacity for typical gaming scenarios
+            games: HashMap::with_capacity(8),
+            bindings: HashMap::with_capacity(8),
+            event_values: HashMap::with_capacity(8),
+            rgb_callback: None,
+        }
+    }
 }
 
 /// GameSense-compatible HTTP server.

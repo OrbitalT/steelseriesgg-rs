@@ -277,12 +277,8 @@ impl DeviceStateStore {
         }
 
         // Start the write-behind background task
-        let write_handle = Self::start_write_behind_task(
-            states,
-            state_file,
-            dirty_flag,
-            last_write_time,
-        );
+        let write_handle =
+            Self::start_write_behind_task(states, state_file, dirty_flag, last_write_time);
         store.write_behind_handle = Some(write_handle);
 
         debug!("DeviceStateStore initialized with async persistence");
@@ -352,11 +348,13 @@ impl DeviceStateStore {
             std::fs::write(&temp_file_clone, content)
                 .map_err(|e| Error::FileSystemError(format!("Failed to write temp file: {}", e)))?;
 
-            std::fs::rename(&temp_file_clone, &state_file_clone)
-                .map_err(|e| Error::FileSystemError(format!("Failed to rename temp file: {}", e)))?;
+            std::fs::rename(&temp_file_clone, &state_file_clone).map_err(|e| {
+                Error::FileSystemError(format!("Failed to rename temp file: {}", e))
+            })?;
 
             Ok(())
-        }).await
+        })
+        .await
         .map_err(|e| Error::Other(format!("Task join error: {}", e)))??;
 
         Ok(())
@@ -367,18 +365,19 @@ impl DeviceStateStore {
         let content = std::fs::read_to_string(&self.state_file)?;
 
         // Try new format first (string-keyed map)
-        let loaded_states = if let Ok(serializable) = serde_json::from_str::<SerializableStates>(&content) {
-            // Convert back to DeviceId-keyed map
-            serializable
-                .0
-                .into_iter()
-                .filter_map(|(key, state)| DeviceId::from_key(&key).ok().map(|id| (id, state)))
-                .collect()
-        } else {
-            // Try legacy format (direct HashMap<DeviceId, DeviceState>) for backward compat
-            // This will likely fail on current broken files, which is expected
-            serde_json::from_str(&content)?
-        };
+        let loaded_states =
+            if let Ok(serializable) = serde_json::from_str::<SerializableStates>(&content) {
+                // Convert back to DeviceId-keyed map
+                serializable
+                    .0
+                    .into_iter()
+                    .filter_map(|(key, state)| DeviceId::from_key(&key).ok().map(|id| (id, state)))
+                    .collect()
+            } else {
+                // Try legacy format (direct HashMap<DeviceId, DeviceState>) for backward compat
+                // This will likely fail on current broken files, which is expected
+                serde_json::from_str(&content)?
+            };
 
         // Update the async states
         *self.states.blocking_write() = loaded_states;
@@ -625,7 +624,11 @@ impl DeviceStateStore {
     }
 
     /// Update keyboard brightness for a device (non-blocking async version).
-    pub async fn update_keyboard_brightness_async(&self, id: DeviceId, brightness: u8) -> Result<()> {
+    pub async fn update_keyboard_brightness_async(
+        &self,
+        id: DeviceId,
+        brightness: u8,
+    ) -> Result<()> {
         let mut states = self.states.write().await;
 
         let state = states.entry(id).or_default();

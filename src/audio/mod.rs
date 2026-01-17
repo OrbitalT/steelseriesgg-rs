@@ -189,11 +189,22 @@ impl AudioMixer {
     pub fn set_chat_mix(&mut self, balance: f32) -> Result<()> {
         self.state.chat_mix = balance.clamp(-1.0, 1.0);
 
-        // TODO: Apply to actual audio system
-        // Future implementation will:
-        // - Adjust game volume factor: if balance < 0.0 { 1.0 } else { 1.0 - balance }
-        // - Adjust chat volume factor: if balance > 0.0 { 1.0 } else { 1.0 + balance }
-        // - Modify PulseAudio sink inputs accordingly
+        // Calculate volume factors for game/chat balance
+        let (game_factor, chat_factor) = self.calculate_balance_factors(balance);
+
+        // Store calculated factors for potential audio system integration
+        // TODO: Integrate with PulseAudio/PipeWire to actually apply these factors
+        // Implementation roadmap:
+        // 1. Use libpulse-binding to enumerate sink inputs by application
+        // 2. Apply game_factor to game audio sink inputs
+        // 3. Apply chat_factor to communication app sink inputs
+        // 4. Handle errors if audio system is unavailable
+        tracing::debug!(
+            "Chat mix set to {:.2}: game_factor={:.2}, chat_factor={:.2}",
+            balance,
+            game_factor,
+            chat_factor
+        );
 
         Ok(())
     }
@@ -201,6 +212,28 @@ impl AudioMixer {
     /// Get chat mix balance.
     pub fn chat_mix(&self) -> f32 {
         self.state.chat_mix
+    }
+
+    /// Calculate volume factors for game and chat based on balance.
+    ///
+    /// Balance ranges from -1.0 (game only) to 1.0 (chat only), with 0.0 being balanced.
+    /// Returns (game_factor, chat_factor) where each factor is between 0.0 and 1.0.
+    fn calculate_balance_factors(&self, balance: f32) -> (f32, f32) {
+        let balance = balance.clamp(-1.0, 1.0);
+
+        let game_factor = if balance <= 0.0 {
+            1.0 // Full game volume when balance is negative or neutral
+        } else {
+            1.0 - balance // Reduce game volume as we go toward chat
+        };
+
+        let chat_factor = if balance >= 0.0 {
+            1.0 // Full chat volume when balance is positive or neutral
+        } else {
+            1.0 + balance // Reduce chat volume as we go toward game (balance is negative)
+        };
+
+        (game_factor, chat_factor)
     }
 
     /// Populate a channel map from the source channels.
@@ -282,10 +315,37 @@ impl AudioMixer {
     /// Currently this is a no-op that always returns `Ok(())`. It is a placeholder
     /// for future PulseAudio/PipeWire integration and does not yet interact with
     /// the underlying audio system.
-    fn apply_channel(&self, _channel: Channel) -> Result<()> {
+    fn apply_channel(&self, channel: Channel) -> Result<()> {
+        // Validate channel state before potential audio system integration
+        let channel_state = self
+            .state
+            .channels
+            .get(&channel)
+            .ok_or_else(|| Error::Audio(format!("Channel {:?} not found", channel)))?;
+
         // TODO: Implement PulseAudio/PipeWire integration
-        // This would use libpulse to set sink input volumes and may return an error
-        // if the underlying audio system interaction fails.
+        // Implementation plan:
+        // 1. Connect to PulseAudio via libpulse-binding
+        // 2. Enumerate sink inputs and match by application name/PID
+        // 3. Set volume using pa_context_set_sink_input_volume
+        // 4. Handle audio system connection errors gracefully
+        // 5. Consider PipeWire compatibility via PulseAudio API
+
+        tracing::debug!(
+            "Would apply channel {:?}: volume={:.2}, mute={}",
+            channel,
+            channel_state.volume,
+            channel_state.mute
+        );
+
+        // For now, validate the volume is in acceptable range
+        if !(0.0..=1.0).contains(&channel_state.volume) {
+            return Err(Error::Audio(format!(
+                "Invalid volume {:.2} for channel {:?} (must be 0.0-1.0)",
+                channel_state.volume, channel
+            )));
+        }
+
         Ok(())
     }
 

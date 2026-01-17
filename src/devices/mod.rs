@@ -9,9 +9,9 @@ pub mod keyboards;
 pub mod zone_mapping;
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::Mutex;
-use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use crate::{Error, Result, STEELSERIES_VENDOR_ID};
@@ -19,18 +19,14 @@ use hidapi::HidDevice;
 
 pub use discovery::DeviceManager;
 pub use hid_reports::{
-    HidCommand, HidReportBuilder, HidDeviceType,
-    RgbZoneCommand, BrightnessCommand, ApplyCommand, CommandCode,
-    PerKeyRgbCommand, PerKeyRgbBuilder, PerKeyAddressingMode,
-    KEYBOARD_REPORT_SIZE, HEADSET_REPORT_SIZE, MAX_RGB_ZONES,
+    ApplyCommand, BrightnessCommand, CommandCode, HEADSET_REPORT_SIZE, HidCommand, HidDeviceType,
+    HidReportBuilder, KEYBOARD_REPORT_SIZE, MAX_RGB_ZONES, PerKeyAddressingMode, PerKeyRgbBuilder,
+    PerKeyRgbCommand, RgbZoneCommand,
 };
 pub use key_mapping::{
-    KeyId, KeyAddress, KeyboardLayout, KeyMapping, KeyMappingDatabase,
-    KeyMappingStats,
+    KeyAddress, KeyId, KeyMapping, KeyMappingDatabase, KeyMappingStats, KeyboardLayout,
 };
-pub use zone_mapping::{
-    ZonePosition, ZoneInfo, ZoneMapping, ZoneEffect, ZoneFallback,
-};
+pub use zone_mapping::{ZoneEffect, ZoneFallback, ZoneInfo, ZoneMapping, ZonePosition};
 
 /// Type of SteelSeries device.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
@@ -162,7 +158,9 @@ impl HidOptimizer {
             // Clean old entries periodically
             if cache.len() > 100 {
                 let now = Instant::now();
-                cache.retain(|_, cached| now.duration_since(cached.last_sent) < self.cache_timeout * 2);
+                cache.retain(|_, cached| {
+                    now.duration_since(cached.last_sent) < self.cache_timeout * 2
+                });
             }
 
             cache.insert(
@@ -293,8 +291,11 @@ pub fn batch_write_reports(
         return Ok(());
     }
 
-    trace!("Batch writing {} HID reports (filtered from {})",
-           prepared_reports.len(), reports.len());
+    trace!(
+        "Batch writing {} HID reports (filtered from {})",
+        prepared_reports.len(),
+        reports.len()
+    );
 
     // Perform batched writes with minimal error handling overhead
     for report in &prepared_reports {
@@ -340,8 +341,11 @@ pub fn write_coalesced_reports(
 
     let chunks: Vec<&[u8]> = data_buffer.chunks(chunk_size).collect();
 
-    trace!("Writing {} coalesced report chunks with {}ms delay",
-           chunks.len(), coalesce_delay.as_millis());
+    trace!(
+        "Writing {} coalesced report chunks with {}ms delay",
+        chunks.len(),
+        coalesce_delay.as_millis()
+    );
 
     batch_write_reports(device, &chunks, report_len, include_report_id)
 }
@@ -370,9 +374,8 @@ where
     }
 
     // Minimize time in critical section
-    let write_result = {
-        write_padded_report(device, &prepared_data, report_len, include_report_id)
-    };
+    let write_result =
+        { write_padded_report(device, &prepared_data, report_len, include_report_id) };
 
     write_result
 }

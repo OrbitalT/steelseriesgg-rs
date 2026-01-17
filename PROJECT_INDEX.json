@@ -1,96 +1,201 @@
 {
-  "project": {
-    "name": "steelseries-gg-linux",
-    "version": "0.1.0",
-    "description": "A complete open-source SteelSeries GG replacement for Linux",
-    "repository": "https://github.com/Ven0m0/steelseriesgg-rs",
-    "license": "MIT",
-    "language": "Rust",
-    "edition": "2021"
-  },
-  "generated": "2026-01-15T22:18:42Z",
-  "metrics": {
-    "total_lines": 5513,
-    "source_files": 20,
-    "test_files": 2,
-    "test_lines": 290,
-    "public_apis": 162,
-    "documentation_files": 20
-  },
-  "entry_points": {
-    "cli": "src/main.rs",
-    "library": "src/lib.rs",
-    "binary": "ssgg",
-    "tests": ["src/rgb/tests.rs", "src/profiles/tests.rs"]
-  },
-  "modules": {
-    "devices": {
-      "path": "src/devices/mod.rs",
-      "purpose": "USB HID device discovery and communication",
-      "exports": ["Device", "DeviceInfo", "DeviceManager", "DeviceType"],
-      "submodules": ["keyboards", "headsets", "discovery"]
-    },
-    "rgb": {
-      "path": "src/rgb/mod.rs",
-      "purpose": "RGB lighting effects and color management",
-      "exports": ["Color", "Effect", "RgbController", "EffectEngine"],
-      "test_lines": 181
-    },
-    "gamesense": {
-      "path": "src/gamesense/mod.rs",
-      "purpose": "HTTP API server for game integration",
-      "exports": ["GameSenseServer", "GameMetadata", "GameEvent"],
-      "port": 27301
-    },
-    "audio": {
-      "path": "src/audio/mod.rs",
-      "purpose": "PulseAudio and Sonar API integration",
-      "exports": ["AudioMixer", "SonarClient", "Channel"],
-      "feature_gated": ["audio", "sonar"]
-    },
-    "profiles": {
-      "path": "src/profiles/mod.rs",
-      "purpose": "Device configuration management",
-      "exports": ["Profile", "KeyboardProfile", "ProfileManager"],
-      "test_lines": 109
-    },
-    "config": {
-      "path": "src/config/mod.rs",
-      "purpose": "Application configuration management",
-      "exports": ["Config", "GameSenseConfig", "AudioConfig"]
-    }
-  },
-  "dependencies": {
-    "core": {
-      "axum": "0.8",
-      "tokio": "1.49",
-      "hidapi": "2.6.4",
-      "clap": "4.5",
-      "serde": "1.0",
-      "thiserror": "2.0",
-      "tracing": "0.1"
-    },
-    "optional": {
-      "libpulse-binding": "2.30.1",
-      "reqwest": "0.13"
-    }
-  },
-  "features": {
-    "default": [],
-    "audio": ["dep:libpulse-binding"],
-    "sonar": ["dep:reqwest"]
-  },
-  "architecture": {
-    "pattern": "CLI application with embedded HTTP server",
-    "runtime": "tokio async multi-threaded",
-    "protocol": "USB HID (65-byte reports)",
-    "api": "GameSense HTTP API on port 27301",
-    "config": "TOML files in ~/.config/ssgg/"
-  },
-  "constants": {
-    "STEELSERIES_VENDOR_ID": "0x1038",
-    "HID_REPORT_SIZE": 65,
-    "GAMESENSE_DEFAULT_PORT": 27301,
-    "CACHE_THRESHOLD_MS": 16
-  }
+	"project": {
+		"name": "steelseriesgg-rs",
+		"description": "A complete open-source SteelSeries GG replacement for Linux - RGB lighting, audio mixer, and GameSense support",
+		"version": "0.1.0",
+		"language": "Rust",
+		"license": "MIT",
+		"repository": "https://github.com/Ven0m0/steelseriesgg-rs",
+		"generated": "2026-01-16T21:47:00Z",
+		"token_reduction": {
+			"original": 69819,
+			"compressed": 3000,
+			"reduction_percent": 94
+		}
+	},
+	"structure": {
+		"total_files": 52,
+		"source_files": 20,
+		"documentation_files": 19,
+		"configuration_files": 13,
+		"lines_of_code": 8691
+	},
+	"entry_points": {
+		"cli": {
+			"path": "src/main.rs",
+			"binary": "ssgg",
+			"description": "Command-line interface with clap-based argument parsing"
+		},
+		"library": {
+			"path": "src/lib.rs",
+			"name": "steelseries_gg",
+			"description": "Public API exports and prelude module"
+		}
+	},
+	"modules": {
+		"devices": {
+			"path": "src/devices/",
+			"exports": ["Device", "DeviceManager", "DeviceInfo", "DeviceType"],
+			"purpose": "Hardware abstraction layer for SteelSeries USB devices via hidapi",
+			"submodules": ["discovery", "keyboards", "headsets"]
+		},
+		"rgb": {
+			"path": "src/rgb/",
+			"exports": [
+				"Color",
+				"Effect",
+				"EffectEngine",
+				"RgbController",
+				"WaveDirection"
+			],
+			"purpose": "RGB color management and animated lighting effects with caching"
+		},
+		"gamesense": {
+			"path": "src/gamesense/",
+			"exports": ["GameSenseServer", "GameMetadata", "GameEvent", "Handler"],
+			"purpose": "HTTP API server (port 27301) for game integration and reactive lighting",
+			"submodules": ["server", "handlers"]
+		},
+		"audio": {
+			"path": "src/audio/",
+			"exports": ["AudioMixer", "SonarClient", "Channel"],
+			"purpose": "Multi-channel audio mixing and SteelSeries Sonar API client",
+			"optional": true,
+			"features": ["audio", "sonar"]
+		},
+		"profiles": {
+			"path": "src/profiles/",
+			"exports": [
+				"Profile",
+				"ProfileManager",
+				"KeyboardProfile",
+				"HeadsetProfile"
+			],
+			"purpose": "Save/load device configurations to ~/.config/ssgg/profiles/"
+		},
+		"config": {
+			"path": "src/config/",
+			"exports": ["Config", "GameSenseConfig", "AudioConfig"],
+			"purpose": "TOML configuration management (~/.config/ssgg/config.toml)"
+		},
+		"error": {
+			"path": "src/error.rs",
+			"exports": ["Error", "Result"],
+			"purpose": "Structured error types with context preservation using thiserror"
+		},
+		"pollrate": {
+			"path": "src/pollrate.rs",
+			"exports": ["PollRate"],
+			"purpose": "USB device poll rate control via sysfs (125Hz-4000Hz)"
+		},
+		"device_state": {
+			"path": "src/device_state.rs",
+			"exports": [
+				"DeviceStateStore",
+				"DeviceId",
+				"KeyboardState",
+				"HeadsetState"
+			],
+			"purpose": "Device state tracking and persistence for daemon mode"
+		}
+	},
+	"dependencies": {
+		"core": {
+			"hidapi": "2.6.4",
+			"tokio": "1.49",
+			"axum": "0.8",
+			"clap": "4.5",
+			"serde": "1.0",
+			"thiserror": "2.0",
+			"tracing": "0.1"
+		},
+		"optional": {
+			"libpulse-binding": "2.30.1",
+			"reqwest": "0.13"
+		}
+	},
+	"features": {
+		"default": [],
+		"audio": ["dep:libpulse-binding"],
+		"sonar": ["dep:reqwest"]
+	},
+	"architecture": {
+		"pattern": "CLI application with embedded HTTP server",
+		"runtime": "tokio async multi-threaded",
+		"protocol": "USB HID (65-byte reports)",
+		"api": "GameSense HTTP API on port 27301",
+		"patterns": [
+			"Device Abstraction",
+			"Async-First Design",
+			"Feature-Gated Compilation",
+			"Effect Caching",
+			"Structured Error Handling",
+			"State Management"
+		]
+	},
+	"api": {
+		"cli_commands": [
+			"devices - List connected devices",
+			"rgb - Control RGB lighting",
+			"daemon - Start background service",
+			"profile - Manage device profiles",
+			"audio - Audio mixer control"
+		],
+		"http_endpoints": [
+			"POST /game_metadata",
+			"POST /bind_game_event",
+			"POST /game_event",
+			"GET /game_event"
+		]
+	},
+	"testing": {
+		"unit_tests": 29,
+		"test_modules": 8,
+		"integration_tests": "Device communication tests (requires hardware)",
+		"test_scripts": 3,
+		"distribution": {
+			"rgb": 11,
+			"profiles": 6,
+			"pollrate": 5,
+			"gamesense": 3,
+			"audio": 1
+		}
+	},
+	"documentation": {
+		"main": ["README.md", "CLAUDE.md", "CONTRIBUTING.md", "TODO.md"],
+		"development": [
+			"PROTOCOL_RESEARCH.md",
+			"DEPENDENCY_AUDIT_REPORT.md",
+			"OPTIMIZATION_REPORT.md",
+			"PRD.md"
+		],
+		"archive": ["RGB verification reports", "Historical development notes"]
+	},
+	"configuration": {
+		"build": "Cargo.toml",
+		"formatting": "rustfmt.toml",
+		"cargo": ".cargo/config.toml",
+		"system": ["assets/99-steelseries.rules", "assets/ssgg.service"]
+	},
+	"optimization": {
+		"binary_size": "2-3 MB",
+		"strip": true,
+		"lto": "fat",
+		"codegen_units": 1,
+		"opt_level": 3
+	},
+	"quick_start": [
+		"sudo apt install libudev-dev libhidapi-dev",
+		"cargo install --path . --features audio,sonar",
+		"sudo cp assets/99-steelseries.rules /etc/udev/rules.d/",
+		"sudo udevadm control --reload-rules",
+		"ssgg devices",
+		"ssgg daemon"
+	],
+	"index_metadata": {
+		"status": "complete",
+		"usage": "Read this index instead of scanning 69,819 tokens across 52 files",
+		"update_command": "/sc:index-repo mode=update",
+		"version": "2.0"
+	}
 }

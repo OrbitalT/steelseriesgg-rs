@@ -19,9 +19,11 @@ pub mod device_state;
 pub mod devices;
 pub mod error;
 pub mod gamesense;
+pub mod performance;
 pub mod pollrate;
 pub mod profiles;
 pub mod rgb;
+pub mod validation;
 
 #[cfg(any(feature = "audio", feature = "sonar"))]
 pub mod audio;
@@ -36,5 +38,7 @@ pub const STEELSERIES_VENDOR_ID: u16 = 0x1038;
 pub mod prelude {
     pub use crate::devices::{Device, DeviceInfo, DeviceManager, DeviceType};
     pub use crate::error::{Error, Result};
-    pub use crate::rgb::{Color, Effect, RgbController};
+    pub use crate::performance::{PerformanceManager, PerformanceStats};
+    pub use crate::rgb::{Color, Effect, PerKeyEffect, PerKeyRgbController, RgbController};
+    pub use crate::validation::{RgbValidator, ValidationReport, ValidationResult};
 }

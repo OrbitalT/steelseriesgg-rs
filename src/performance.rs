@@ -12,10 +12,10 @@
 
 //use crate::devices::key_mapping::KeyId; // TODO: Use when needed
 use crate::rgb::{Color, Effect, PerKeyEffect};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
 
 /// RGB timing metrics for performance monitoring as required by the performance foundation plan.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -98,8 +98,8 @@ impl EffectComplexity {
     /// Get recommended frame budget for this complexity level.
     pub fn frame_budget_ms(&self) -> f32 {
         match self {
-            EffectComplexity::Simple => 33.0,    // 30 FPS
-            EffectComplexity::Medium => 16.67,   // 60 FPS
+            EffectComplexity::Simple => 33.0,   // 30 FPS
+            EffectComplexity::Medium => 16.67,  // 60 FPS
             EffectComplexity::High => 8.33,     // 120 FPS
             EffectComplexity::Critical => 4.17, // 240 FPS
         }
@@ -166,7 +166,8 @@ impl PerformanceMonitor {
         // Calculate actual FPS every second
         let fps_window_duration = now.duration_since(self.fps_window_start);
         if fps_window_duration >= Duration::from_secs(1) {
-            self.metrics.actual_fps = self.frames_in_window as f32 / fps_window_duration.as_secs_f32();
+            self.metrics.actual_fps =
+                self.frames_in_window as f32 / fps_window_duration.as_secs_f32();
             self.frames_in_window = 0;
             self.fps_window_start = now;
         }
@@ -180,8 +181,11 @@ impl PerformanceMonitor {
             self.metrics.avg_computation_time_us = computation_time_us;
         } else {
             // Exponential moving average for smooth metrics
-            self.metrics.frame_time = self.metrics.frame_time * (1.0 - self.ema_alpha) + frame_time_ms * self.ema_alpha;
-            self.metrics.avg_computation_time_us = self.metrics.avg_computation_time_us * (1.0 - self.ema_alpha) + computation_time_us * self.ema_alpha;
+            self.metrics.frame_time =
+                self.metrics.frame_time * (1.0 - self.ema_alpha) + frame_time_ms * self.ema_alpha;
+            self.metrics.avg_computation_time_us = self.metrics.avg_computation_time_us
+                * (1.0 - self.ema_alpha)
+                + computation_time_us * self.ema_alpha;
         }
 
         // Update target FPS based on current complexity
@@ -256,7 +260,9 @@ impl PerformanceMonitor {
         let target_frame_time = base_interval_ms;
         let tolerance = self.drop_threshold_ms;
         let dropped_frame_ratio = if !self.timing_history.is_empty() {
-            let dropped = self.timing_history.iter()
+            let dropped = self
+                .timing_history
+                .iter()
                 .filter(|&t| t.as_secs_f32() * 1000.0 > target_frame_time + tolerance)
                 .count();
             dropped as f32 / self.timing_history.len() as f32
@@ -303,9 +309,11 @@ impl PerformanceMonitor {
             1.0
         };
 
-        let high_frame_time = self.metrics.frame_time > self.current_complexity.frame_budget_ms() * 1.5;
+        let high_frame_time =
+            self.metrics.frame_time > self.current_complexity.frame_budget_ms() * 1.5;
         let low_fps = fps_ratio < 0.8;
-        let high_cache_miss = self.metrics.cache_hit_rate < 0.5 && (self.cache_hits + self.cache_misses) > 10;
+        let high_cache_miss =
+            self.metrics.cache_hit_rate < 0.5 && (self.cache_hits + self.cache_misses) > 10;
 
         high_frame_time || low_fps || high_cache_miss
     }
@@ -435,7 +443,8 @@ impl ColorVectorPool {
         let mut pool = Vec::with_capacity(initial_capacity);
 
         // Pre-allocate some vectors of common sizes
-        for size in [1, 9, 87, 104] { // Single key, zones, TKL keys, full keyboard keys
+        for size in [1, 9, 87, 104] {
+            // Single key, zones, TKL keys, full keyboard keys
             for _ in 0..(initial_capacity / 4) {
                 pool.push(vec![Color::BLACK; size]);
             }
@@ -545,7 +554,12 @@ impl EffectComputationCache {
     }
 
     /// Try to get cached effect computation.
-    pub fn get(&mut self, effect: &PerKeyEffect, elapsed_time: Duration, key_count: usize) -> Option<Vec<Color>> {
+    pub fn get(
+        &mut self,
+        effect: &PerKeyEffect,
+        elapsed_time: Duration,
+        key_count: usize,
+    ) -> Option<Vec<Color>> {
         let key = EffectCacheKey {
             effect_hash: self.hash_effect(effect),
             time_bucket: self.time_bucket(elapsed_time),
@@ -569,7 +583,13 @@ impl EffectComputationCache {
     }
 
     /// Store computed effect in cache.
-    pub fn put(&mut self, effect: &PerKeyEffect, elapsed_time: Duration, colors: Vec<Color>, computation_time: Duration) {
+    pub fn put(
+        &mut self,
+        effect: &PerKeyEffect,
+        elapsed_time: Duration,
+        colors: Vec<Color>,
+        computation_time: Duration,
+    ) {
         // Enforce cache size limit
         if self.cache.len() >= self.max_size {
             self.evict_lru();
@@ -603,7 +623,8 @@ impl EffectComputationCache {
     /// Clear expired entries from cache.
     pub fn cleanup(&mut self) {
         let now = Instant::now();
-        self.cache.retain(|_, entry| now.duration_since(entry.timestamp) <= self.max_age);
+        self.cache
+            .retain(|_, entry| now.duration_since(entry.timestamp) <= self.max_age);
     }
 
     /// Hash an effect for caching.
@@ -645,8 +666,11 @@ impl EffectComputationCache {
 
     /// Evict least recently used cache entry.
     fn evict_lru(&mut self) {
-        if let Some((key_to_remove, _)) = self.cache.iter()
-            .min_by_key(|(_, entry)| (entry.access_count, entry.timestamp)) {
+        if let Some((key_to_remove, _)) = self
+            .cache
+            .iter()
+            .min_by_key(|(_, entry)| (entry.access_count, entry.timestamp))
+        {
             let key_to_remove = key_to_remove.clone();
             self.cache.remove(&key_to_remove);
         }
@@ -710,9 +734,9 @@ impl HidBatchProcessor {
 
     /// Check if the batch should be processed now.
     pub fn should_process_batch(&self) -> bool {
-        self.pending_operations.len() >= self.max_batch_size ||
-        self.last_batch_time.elapsed() >= self.max_batch_delay ||
-        (!self.pending_operations.is_empty() && self.has_urgent_operation())
+        self.pending_operations.len() >= self.max_batch_size
+            || self.last_batch_time.elapsed() >= self.max_batch_delay
+            || (!self.pending_operations.is_empty() && self.has_urgent_operation())
     }
 
     /// Process the current batch and return operations to execute.
@@ -739,8 +763,8 @@ impl HidBatchProcessor {
     /// Check if any operation in the batch is urgent.
     fn has_urgent_operation(&self) -> bool {
         self.pending_operations.iter().any(|op| {
-            matches!(op.operation_type, HidOpType::Apply) ||
-            op.timestamp.elapsed() > Duration::from_millis(50)
+            matches!(op.operation_type, HidOpType::Apply)
+                || op.timestamp.elapsed() > Duration::from_millis(50)
         })
     }
 
@@ -836,7 +860,8 @@ impl AdaptiveRefreshController {
 
         // Calculate average total cycle time
         if self.computation_times.len() >= 5 {
-            let avg_computation = self.computation_times.iter().sum::<Duration>() / self.computation_times.len() as u32;
+            let avg_computation = self.computation_times.iter().sum::<Duration>()
+                / self.computation_times.len() as u32;
             let avg_hid = self.hid_times.iter().sum::<Duration>() / self.hid_times.len() as u32;
             let total_cycle_time = avg_computation + avg_hid;
 
@@ -929,18 +954,33 @@ impl PerformanceManager {
     }
 
     /// Try to get cached effect computation.
-    pub fn get_cached_effect(&mut self, effect: &PerKeyEffect, elapsed_time: Duration, key_count: usize) -> Option<Vec<Color>> {
+    pub fn get_cached_effect(
+        &mut self,
+        effect: &PerKeyEffect,
+        elapsed_time: Duration,
+        key_count: usize,
+    ) -> Option<Vec<Color>> {
         self.effect_cache.get(effect, elapsed_time, key_count)
     }
 
     /// Store computed effect in cache.
-    pub fn cache_effect(&mut self, effect: &PerKeyEffect, elapsed_time: Duration, colors: Vec<Color>, computation_time: Duration) {
-        self.effect_cache.put(effect, elapsed_time, colors, computation_time);
+    pub fn cache_effect(
+        &mut self,
+        effect: &PerKeyEffect,
+        elapsed_time: Duration,
+        colors: Vec<Color>,
+        computation_time: Duration,
+    ) {
+        self.effect_cache
+            .put(effect, elapsed_time, colors, computation_time);
     }
 
     /// Add HID operation to batch.
     pub fn add_hid_operation(&mut self, data: Vec<u8>) -> Option<Vec<Vec<u8>>> {
-        if self.hid_batcher.add_operation(HidOpType::SetZoneColors, data) {
+        if self
+            .hid_batcher
+            .add_operation(HidOpType::SetZoneColors, data)
+        {
             Some(self.hid_batcher.process_batch())
         } else {
             None
@@ -963,8 +1003,7 @@ impl PerformanceManager {
 
         self.stats.avg_computation_time_us =
             self.stats.avg_computation_time_us * (1.0 - alpha) + comp_us * alpha;
-        self.stats.avg_hid_time_us =
-            self.stats.avg_hid_time_us * (1.0 - alpha) + hid_us * alpha;
+        self.stats.avg_hid_time_us = self.stats.avg_hid_time_us * (1.0 - alpha) + hid_us * alpha;
 
         // Update other stats
         self.stats.cache_hit_rate = self.effect_cache.hit_rate();
@@ -972,7 +1011,9 @@ impl PerformanceManager {
         self.stats.allocations_saved = self.color_pool.allocations_saved();
         self.stats.memory_pool_utilization = self.color_pool.get_utilization();
 
-        let new_rate = self.refresh_controller.record_timing(computation_time, hid_time);
+        let new_rate = self
+            .refresh_controller
+            .record_timing(computation_time, hid_time);
         if new_rate != self.stats.current_refresh_rate {
             self.stats.refresh_rate_adjustments += 1;
             self.stats.current_refresh_rate = new_rate;

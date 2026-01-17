@@ -96,12 +96,12 @@ impl Color {
         // Use integer sector for faster branching
         let sector = h_sector as i32;
         let (r, g, b) = match sector {
-            0 => (c, x, 0.0),        // 0-60
-            1 => (x, c, 0.0),        // 60-120
-            2 => (0.0, c, x),        // 120-180
-            3 => (0.0, x, c),        // 180-240
-            4 => (x, 0.0, c),        // 240-300
-            _ => (c, 0.0, x),        // 300-360
+            0 => (c, x, 0.0), // 0-60
+            1 => (x, c, 0.0), // 60-120
+            2 => (0.0, c, x), // 120-180
+            3 => (0.0, x, c), // 180-240
+            4 => (x, 0.0, c), // 240-300
+            _ => (c, 0.0, x), // 300-360
         };
 
         // Single multiplication by 255.0 instead of per-component
@@ -218,7 +218,7 @@ pub enum PerKeyEffect {
     Reactive {
         base_color: Color,
         highlight_color: Color,
-        duration: f32, // Seconds
+        duration: f32,           // Seconds
         active_keys: Vec<KeyId>, // Currently highlighted keys
     },
 
@@ -267,19 +267,19 @@ pub enum KeyWaveDirection {
 /// Gradient direction for per-key effects.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum GradientDirection {
-    Horizontal,  // Left to right
-    Vertical,    // Top to bottom
-    Diagonal,    // Top-left to bottom-right
-    Radial,      // Center outward
+    Horizontal, // Left to right
+    Vertical,   // Top to bottom
+    Diagonal,   // Top-left to bottom-right
+    Radial,     // Center outward
 }
 
 /// Color blending mode for row/column effects.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum BlendMode {
-    Add,         // Add colors together (clamped)
-    Multiply,    // Multiply colors
-    Average,     // Average the colors
-    Overlay,     // Row color overlays column
+    Add,      // Add colors together (clamped)
+    Multiply, // Multiply colors
+    Average,  // Average the colors
+    Overlay,  // Row color overlays column
 }
 
 impl Default for PerKeyEffect {
@@ -386,9 +386,9 @@ impl EffectEngine {
             TimingMode::Adaptive => {
                 let complexity = self.calculate_effect_complexity();
                 match complexity {
-                    crate::performance::EffectComplexity::Simple => Duration::from_millis(33),   // 30 FPS
-                    crate::performance::EffectComplexity::Medium => Duration::from_millis(16),   // 60 FPS
-                    crate::performance::EffectComplexity::High => Duration::from_millis(8),     // 120 FPS
+                    crate::performance::EffectComplexity::Simple => Duration::from_millis(33), // 30 FPS
+                    crate::performance::EffectComplexity::Medium => Duration::from_millis(16), // 60 FPS
+                    crate::performance::EffectComplexity::High => Duration::from_millis(8), // 120 FPS
                     crate::performance::EffectComplexity::Critical => Duration::from_millis(4), // 240 FPS
                 }
             }
@@ -396,9 +396,9 @@ impl EffectEngine {
                 // Aggressive timing for consistent performance
                 let complexity = self.calculate_effect_complexity();
                 match complexity {
-                    crate::performance::EffectComplexity::Simple => Duration::from_millis(12),   // 83 FPS
-                    crate::performance::EffectComplexity::Medium => Duration::from_millis(8),    // 120 FPS
-                    crate::performance::EffectComplexity::High => Duration::from_millis(4),     // 240 FPS
+                    crate::performance::EffectComplexity::Simple => Duration::from_millis(12), // 83 FPS
+                    crate::performance::EffectComplexity::Medium => Duration::from_millis(8), // 120 FPS
+                    crate::performance::EffectComplexity::High => Duration::from_millis(4), // 240 FPS
                     crate::performance::EffectComplexity::Critical => Duration::from_millis(2), // 500 FPS
                 }
             }
@@ -441,7 +441,8 @@ impl EffectEngine {
         match &self.effect {
             Effect::Static { color } => {
                 // Use extend with repeat iterator for better performance than resize
-                self.cached_colors.extend(std::iter::repeat(*color).take(self.zone_count));
+                self.cached_colors
+                    .extend(std::iter::repeat(*color).take(self.zone_count));
             }
 
             Effect::Breathing { color, speed } => {
@@ -449,14 +450,16 @@ impl EffectEngine {
                 let t = (elapsed_secs * speed * 2.0 * std::f32::consts::PI).sin();
                 let brightness = (t + 1.0) * 0.5; // Use multiplication instead of division
                 let scaled_color = color.scale(brightness);
-                self.cached_colors.extend(std::iter::repeat(scaled_color).take(self.zone_count));
+                self.cached_colors
+                    .extend(std::iter::repeat(scaled_color).take(self.zone_count));
             }
 
             Effect::Spectrum { speed } => {
                 // Cycle through hue
                 let hue = (elapsed_secs * speed * 360.0) % 360.0;
                 let color = Color::from_hsv(hue, 1.0, 1.0);
-                self.cached_colors.extend(std::iter::repeat(color).take(self.zone_count));
+                self.cached_colors
+                    .extend(std::iter::repeat(color).take(self.zone_count));
             }
 
             Effect::Wave {
@@ -465,7 +468,8 @@ impl EffectEngine {
                 direction,
             } => {
                 if colors.is_empty() {
-                    self.cached_colors.extend(std::iter::repeat(Color::BLACK).take(self.zone_count));
+                    self.cached_colors
+                        .extend(std::iter::repeat(Color::BLACK).take(self.zone_count));
                 } else {
                     let phase = elapsed_secs * speed;
                     let zone_count_f32 = self.zone_count as f32;
@@ -505,7 +509,8 @@ impl EffectEngine {
             Effect::Reactive { color, .. } => {
                 // Base state - actual reactivity handled by input events
                 let scaled_color = color.scale(0.2);
-                self.cached_colors.extend(std::iter::repeat(scaled_color).take(self.zone_count));
+                self.cached_colors
+                    .extend(std::iter::repeat(scaled_color).take(self.zone_count));
             }
 
             Effect::Gradient { start, end } => {
@@ -524,12 +529,14 @@ impl EffectEngine {
                 self.cached_colors.extend_from_slice(&colors[..copy_len]);
                 if self.zone_count > copy_len {
                     let remaining = self.zone_count - copy_len;
-                    self.cached_colors.extend(std::iter::repeat(Color::BLACK).take(remaining));
+                    self.cached_colors
+                        .extend(std::iter::repeat(Color::BLACK).take(remaining));
                 }
             }
 
             Effect::Off => {
-                self.cached_colors.extend(std::iter::repeat(Color::BLACK).take(self.zone_count));
+                self.cached_colors
+                    .extend(std::iter::repeat(Color::BLACK).take(self.zone_count));
             }
         }
 
@@ -611,7 +618,9 @@ impl PerKeyEffectEngine {
 
     /// Compute distance between two keys.
     fn key_distance(&self, key1: KeyId, key2: KeyId) -> f32 {
-        if let (Some((x1, y1)), Some((x2, y2))) = (self.get_key_position(key1), self.get_key_position(key2)) {
+        if let (Some((x1, y1)), Some((x2, y2))) =
+            (self.get_key_position(key1), self.get_key_position(key2))
+        {
             ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt()
         } else {
             f32::INFINITY
@@ -672,7 +681,11 @@ impl PerKeyEffectEngine {
                 }
             }
 
-            PerKeyEffect::Wave { colors, speed, direction } => {
+            PerKeyEffect::Wave {
+                colors,
+                speed,
+                direction,
+            } => {
                 if colors.is_empty() {
                     for key in self.key_mapping.get_all_keys() {
                         self.cached_key_colors.insert(key, Color::BLACK);
@@ -704,7 +717,8 @@ impl PerKeyEffectEngine {
                             let next_index = (color_index + 1) % colors.len();
                             let blend_t = color_pos % 1.0;
 
-                            let color = Color::blend(colors[color_index], colors[next_index], blend_t);
+                            let color =
+                                Color::blend(colors[color_index], colors[next_index], blend_t);
                             self.cached_key_colors.insert(key, color);
                         } else {
                             self.cached_key_colors.insert(key, Color::BLACK);
@@ -713,7 +727,11 @@ impl PerKeyEffectEngine {
                 }
             }
 
-            PerKeyEffect::Ripple { color, speed, center_keys } => {
+            PerKeyEffect::Ripple {
+                color,
+                speed,
+                center_keys,
+            } => {
                 if center_keys.is_empty() {
                     // Use keyboard center as default
                     for key in self.key_mapping.get_all_keys() {
@@ -749,23 +767,34 @@ impl PerKeyEffectEngine {
                             }
                         }
 
-                        self.cached_key_colors.insert(key, color.scale(max_brightness));
+                        self.cached_key_colors
+                            .insert(key, color.scale(max_brightness));
                     }
                 }
             }
 
-            PerKeyEffect::Reactive { base_color, highlight_color, duration: _, active_keys } => {
+            PerKeyEffect::Reactive {
+                base_color,
+                highlight_color,
+                duration: _,
+                active_keys,
+            } => {
                 for key in self.key_mapping.get_all_keys() {
-                    let color = if active_keys.contains(&key) || self.reactive_state.contains_key(&key) {
-                        *highlight_color
-                    } else {
-                        *base_color
-                    };
+                    let color =
+                        if active_keys.contains(&key) || self.reactive_state.contains_key(&key) {
+                            *highlight_color
+                        } else {
+                            *base_color
+                        };
                     self.cached_key_colors.insert(key, color);
                 }
             }
 
-            PerKeyEffect::Gradient { start, end, direction } => {
+            PerKeyEffect::Gradient {
+                start,
+                end,
+                direction,
+            } => {
                 for key in self.key_mapping.get_all_keys() {
                     if let Some((x, y)) = self.get_key_position(key) {
                         let t = match direction {
@@ -792,11 +821,21 @@ impl PerKeyEffectEngine {
                 }
             }
 
-            PerKeyEffect::RowColumn { row_colors, column_colors, blend_mode } => {
+            PerKeyEffect::RowColumn {
+                row_colors,
+                column_colors,
+                blend_mode,
+            } => {
                 for key in self.key_mapping.get_all_keys() {
                     if let Some(address) = self.key_mapping.get_key_address(key) {
-                        let row_color = row_colors.get(address.row as usize).copied().unwrap_or(Color::BLACK);
-                        let col_color = column_colors.get(address.col as usize).copied().unwrap_or(Color::BLACK);
+                        let row_color = row_colors
+                            .get(address.row as usize)
+                            .copied()
+                            .unwrap_or(Color::BLACK);
+                        let col_color = column_colors
+                            .get(address.col as usize)
+                            .copied()
+                            .unwrap_or(Color::BLACK);
 
                         let final_color = match blend_mode {
                             BlendMode::Average => Color::blend(row_color, col_color, 0.5),
@@ -835,15 +874,36 @@ impl PerKeyEffectEngine {
                         KeyId::W | KeyId::A | KeyId::S | KeyId::D => *wasd_color,
 
                         // Arrow keys
-                        KeyId::ArrowUp | KeyId::ArrowDown | KeyId::ArrowLeft | KeyId::ArrowRight => *arrow_keys_color,
+                        KeyId::ArrowUp
+                        | KeyId::ArrowDown
+                        | KeyId::ArrowLeft
+                        | KeyId::ArrowRight => *arrow_keys_color,
 
                         // Function keys
-                        KeyId::F1 | KeyId::F2 | KeyId::F3 | KeyId::F4 | KeyId::F5 | KeyId::F6 |
-                        KeyId::F7 | KeyId::F8 | KeyId::F9 | KeyId::F10 | KeyId::F11 | KeyId::F12 => *function_keys_color,
+                        KeyId::F1
+                        | KeyId::F2
+                        | KeyId::F3
+                        | KeyId::F4
+                        | KeyId::F5
+                        | KeyId::F6
+                        | KeyId::F7
+                        | KeyId::F8
+                        | KeyId::F9
+                        | KeyId::F10
+                        | KeyId::F11
+                        | KeyId::F12 => *function_keys_color,
 
                         // Number row
-                        KeyId::Key1 | KeyId::Key2 | KeyId::Key3 | KeyId::Key4 | KeyId::Key5 |
-                        KeyId::Key6 | KeyId::Key7 | KeyId::Key8 | KeyId::Key9 | KeyId::Key0 => *number_row_color,
+                        KeyId::Key1
+                        | KeyId::Key2
+                        | KeyId::Key3
+                        | KeyId::Key4
+                        | KeyId::Key5
+                        | KeyId::Key6
+                        | KeyId::Key7
+                        | KeyId::Key8
+                        | KeyId::Key9
+                        | KeyId::Key0 => *number_row_color,
 
                         // Default for all other keys
                         _ => *default_color,
@@ -958,10 +1018,18 @@ impl PerKeyRgbController {
             let key_count = self.engine.key_mapping.get_all_keys().len();
 
             // Try cache first
-            if let Some(cached_colors) = perf_mgr.get_cached_effect(self.engine.effect(), elapsed, key_count) {
+            if let Some(cached_colors) =
+                perf_mgr.get_cached_effect(self.engine.effect(), elapsed, key_count)
+            {
                 // Convert Vec<Color> back to HashMap<KeyId, Color> format
                 let mut color_map = HashMap::new();
-                for (i, key) in self.engine.key_mapping.get_all_keys().into_iter().enumerate() {
+                for (i, key) in self
+                    .engine
+                    .key_mapping
+                    .get_all_keys()
+                    .into_iter()
+                    .enumerate()
+                {
                     if i < cached_colors.len() {
                         color_map.insert(key, cached_colors[i]);
                     }
@@ -973,7 +1041,10 @@ impl PerKeyRgbController {
                 let computation_time = start_time.elapsed();
 
                 // Extract colors for caching
-                let colors_vec: Vec<Color> = self.engine.key_mapping.get_all_keys()
+                let colors_vec: Vec<Color> = self
+                    .engine
+                    .key_mapping
+                    .get_all_keys()
                     .into_iter()
                     .map(|key| computed_colors.get(&key).copied().unwrap_or(Color::BLACK))
                     .collect();
@@ -999,7 +1070,8 @@ impl PerKeyRgbController {
         if (self.brightness - 1.0).abs() < f32::EPSILON {
             colors.iter().map(|(&key, &color)| (key, color)).collect()
         } else {
-            colors.iter()
+            colors
+                .iter()
                 .map(|(&key, &color)| (key, color.scale(self.brightness)))
                 .collect()
         }
