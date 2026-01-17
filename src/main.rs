@@ -11,14 +11,18 @@ use steelseries_gg::device_state::{DeviceId, DeviceStateStore, KeyboardState};
 use steelseries_gg::devices::keyboards::Keyboard;
 use steelseries_gg::devices::{
     DeviceInfo, DeviceManager, DeviceType, discovery::print_device_summary,
+    diagnostics::{init_global_diagnostics, with_global_diagnostics},
+    KeyId, KeyAddress,
 };
 use steelseries_gg::gamesense::GameSenseServer;
 use steelseries_gg::profiles::{KeyboardProfile, Profile, ProfileManager};
 use steelseries_gg::rgb::{Color, Effect, RgbController, WaveDirection};
+use steelseries_gg::validation::RgbValidator;
+use steelseries_gg::{Error, Result};
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 #[cfg(feature = "audio")]
@@ -35,6 +39,10 @@ struct Cli {
     /// Enable debug logging
     #[arg(short, long)]
     debug: bool,
+
+    /// Enable HID communication debugging and diagnostics
+    #[arg(long)]
+    debug_hid: bool,
 
     #[command(subcommand)]
     command: Commands,
@@ -84,6 +92,31 @@ enum Commands {
         port: u16,
     },
 
+    /// Run validation tests on connected devices
+    Validate {
+        /// Enable performance benchmarks
+        #[arg(short, long)]
+        benchmark: bool,
+
+        /// Test timeout in seconds
+        #[arg(short, long, default_value = "30")]
+        timeout: u64,
+
+        /// Export validation report to file
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// JSON output format
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Monitor and control RGB performance optimizations
+    Performance {
+        #[command(subcommand)]
+        action: PerformanceAction,
+    },
+
     /// Run as a daemon (device control + GameSense server)
     Daemon,
 }
@@ -114,6 +147,68 @@ enum RgbAction {
 
     /// Turn off all LEDs
     Off,
+
+    /// Per-key RGB control (requires supported keyboard with key mapping)
+    Perkey {
+        #[command(subcommand)]
+        action: PerKeyAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum PerKeyAction {
+    /// Set a single key to a specific color
+    SetKey {
+        /// Key name (e.g., A, Enter, Space, F1, etc.) - case insensitive
+        key: String,
+        /// Color as hex (e.g., FF0000) or name (red, green, blue, etc.)
+        color: String,
+    },
+
+    /// Set multiple keys to specific colors
+    SetKeys {
+        /// Key-color pairs in format "key:color,key:color" (e.g., "A:red,S:green,D:blue")
+        keys: String,
+    },
+
+    /// Set a rectangular region of keys to the same color using matrix coordinates
+    SetRegion {
+        /// Starting row (0-based)
+        start_row: u8,
+        /// Starting column (0-based)
+        start_col: u8,
+        /// Number of rows
+        rows: u8,
+        /// Number of columns
+        cols: u8,
+        /// Color as hex (e.g., FF0000) or name (red, green, blue, etc.)
+        color: String,
+    },
+
+    /// Turn off all per-key RGB (set all keys to black)
+    Clear,
+
+    /// Test individual key matrix positions (direct addressing)
+    TestMatrix {
+        /// Row number (0-based)
+        row: u8,
+        /// Column number (0-based)
+        col: u8,
+        /// Color as hex (e.g., FF0000) or name (red, green, blue, etc.)
+        color: String,
+    },
+
+    /// Test a pattern across the keyboard
+    TestPattern {
+        /// Pattern name: rainbow, checkerboard, wave, test
+        pattern: String,
+    },
+
+    /// Show keyboard mapping information
+    ShowMapping,
+
+    /// Show per-key RGB support status
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -259,6 +354,44 @@ enum PollrateAction {
     Status,
 }
 
+#[derive(Subcommand)]
+enum PerformanceAction {
+    /// Show current performance statistics
+    Stats {
+        /// Continuously monitor (update every N seconds)
+        #[arg(short, long)]
+        monitor: Option<u64>,
+
+        /// Export stats to file
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// JSON output format
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Enable performance optimizations
+    Enable,
+
+    /// Disable performance optimizations
+    Disable,
+
+    /// Cleanup performance caches
+    Cleanup,
+
+    /// Run performance benchmark
+    Benchmark {
+        /// Duration in seconds
+        #[arg(short, long, default_value = "10")]
+        duration: u64,
+
+        /// Export results to file
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+}
+
 fn parse_color(s: &str) -> Option<Color> {
     // Try named colors
     let s_lower = s.to_ascii_lowercase();
@@ -303,40 +436,46 @@ fn parse_channel(s: &str) -> Option<Channel> {
 }
 
 /// Convert a volume level (0-100) to a normalized float (0.0-1.0)
+#[cfg(feature = "audio")]
 fn normalize_volume(level: u8) -> f32 {
     (level.min(100) as f32) / 100.0
 }
 
 /// Parse and validate a Sonar channel name
 #[cfg(feature = "sonar")]
-fn parse_sonar_channel<'a>(channel: &'a str, valid_channels: &[&str]) -> anyhow::Result<&'a str> {
+fn parse_sonar_channel<'a>(channel: &'a str, valid_channels: &[&str]) -> Result<&'a str> {
     let channel_lower = channel.to_ascii_lowercase();
     if valid_channels.contains(&channel_lower.as_str()) {
         Ok(channel)
     } else {
-        Err(anyhow::anyhow!(
+        Err(Error::Other(format!(
             "Invalid channel: {}. Valid channels: {}",
             channel,
             valid_channels.join(", ")
-        ))
+        )))
     }
 }
 
 /// Parse a zone identifier (e.g., "zone1", "2", "all") into a zone index (0-based).
 /// Returns None for "all"/"keyboard" which should apply to all zones.
+#[inline]
 fn parse_zone_number(zone: &str) -> Option<usize> {
-    let zone_lower = zone.to_ascii_lowercase();
-
-    // Check for "all" or "keyboard" which should apply to all zones
-    if zone_lower == "all" || zone_lower == "keyboard" {
+    // Fast path: check common cases without string allocation
+    if zone.eq_ignore_ascii_case("all") || zone.eq_ignore_ascii_case("keyboard") {
         return None;
     }
 
     // Try parsing as "zone<number>" or just "<number>"
-    zone_lower
-        .strip_prefix("zone")
-        .and_then(|rest| rest.parse::<usize>().ok())
-        .or_else(|| zone_lower.parse::<usize>().ok())
+    // Use case-insensitive prefix check to avoid allocation
+    let number_part = if zone.len() > 4 && zone[0..4].eq_ignore_ascii_case("zone") {
+        &zone[4..]
+    } else {
+        zone
+    };
+
+    number_part
+        .parse::<usize>()
+        .ok()
         .and_then(|one_based| {
             // Convert 1-based to 0-based index
             if one_based > 0 {
@@ -348,7 +487,7 @@ fn parse_zone_number(zone: &str) -> Option<usize> {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Setup logging
@@ -358,6 +497,14 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
+
+    // Initialize HID diagnostics if requested
+    if cli.debug_hid {
+        init_global_diagnostics(true)?;
+        info!("HID diagnostics enabled - logging to timestamped file");
+    } else {
+        init_global_diagnostics(false)?;
+    }
 
     match cli.command {
         Commands::Devices => {
@@ -392,25 +539,40 @@ async fn main() -> anyhow::Result<()> {
             cmd_server(port).await?;
         }
 
+        Commands::Validate { benchmark, timeout, output, json } => {
+            let manager = DeviceManager::new()?;
+            cmd_validate(&manager, benchmark, timeout, output, json)?;
+        }
+
+        Commands::Performance { action } => {
+            let manager = DeviceManager::new()?;
+            cmd_performance(&manager, action)?;
+        }
+
         Commands::Daemon => {
             let manager = DeviceManager::new()?;
             cmd_daemon(manager).await?;
         }
     }
 
+    // Display HID diagnostic summary if enabled
+    if let Some(summary) = with_global_diagnostics(|diag| diag.get_summary()) {
+        info!("HID Diagnostic Summary:\n{}", summary);
+    }
+
     Ok(())
 }
 
-fn cmd_devices(manager: &DeviceManager) -> anyhow::Result<()> {
+fn cmd_devices(manager: &DeviceManager) -> Result<()> {
     print_device_summary(manager);
     Ok(())
 }
 
-fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
+fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> Result<()> {
     // Find the first keyboard
     let keyboard_info = manager
         .first_device_of_type(DeviceType::Keyboard)
-        .ok_or_else(|| anyhow::anyhow!("No keyboard found"))?;
+        .ok_or_else(|| Error::Other("No keyboard found".to_string()))?;
 
     println!("Using keyboard: {}", keyboard_info.name);
 
@@ -427,7 +589,7 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
     match action {
         RgbAction::Color { color } => {
             let color =
-                parse_color(&color).ok_or_else(|| anyhow::anyhow!("Invalid color: {}", color))?;
+                parse_color(&color).ok_or_else(|| Error::Other(format!("Invalid color: {}", color)))?;
 
             println!("Setting color to {}", color);
             keyboard.set_color(color)?;
@@ -496,12 +658,353 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> anyhow::Result<()> {
             println!("Done!");
             println!("Note: LEDs should now be off (black/dark). Device accepted the command.");
         }
+
+        RgbAction::Perkey { action } => {
+            cmd_per_key_rgb(&mut keyboard, action)?;
+        }
     }
 
     Ok(())
 }
 
-fn cmd_profile(action: ProfileAction) -> anyhow::Result<()> {
+fn cmd_per_key_rgb(keyboard: &mut Box<dyn Keyboard>, action: PerKeyAction) -> Result<()> {
+    match action {
+        PerKeyAction::SetKey { key, color } => {
+            // Parse the key name to KeyId
+            let key_id = parse_key_name(&key)
+                .ok_or_else(|| Error::Other(format!("Unknown key: {}", key)))?;
+
+            // Parse the color
+            let color = parse_color(&color)
+                .ok_or_else(|| Error::Other(format!("Invalid color: {}", color)))?;
+
+            // Check if per-key RGB is supported
+            if !keyboard.supports_per_key_rgb() {
+                println!("Warning: Per-key RGB not supported on this keyboard");
+                println!("Available key mapping: None");
+                println!("Falling back to zone-based RGB (setting entire keyboard)");
+                keyboard.set_color(color)?;
+                keyboard.apply()?;
+                return Ok(());
+            }
+
+            println!("Setting key '{}' to color {}", key, color);
+            keyboard.set_key_color(key_id, color)?;
+            keyboard.apply()?;
+            println!("Done!");
+        }
+
+        PerKeyAction::SetKeys { keys } => {
+            // Parse key-color pairs: "A:red,S:green,D:blue"
+            let mut key_colors = Vec::new();
+            for pair in keys.split(',') {
+                let parts: Vec<&str> = pair.split(':').collect();
+                if parts.len() != 2 {
+                    return Err(Error::Other(format!("Invalid key:color pair: {}", pair)));
+                }
+
+                let key_name = parts[0].trim();
+                let color_name = parts[1].trim();
+
+                let key_id = parse_key_name(key_name)
+                    .ok_or_else(|| Error::Other(format!("Unknown key: {}", key_name)))?;
+
+                let color = parse_color(color_name)
+                    .ok_or_else(|| Error::Other(format!("Invalid color: {}", color_name)))?;
+
+                key_colors.push((key_id, color));
+            }
+
+            if key_colors.is_empty() {
+                return Err(Error::Other("No valid key:color pairs found".to_string()));
+            }
+
+            // Check if per-key RGB is supported
+            if !keyboard.supports_per_key_rgb() {
+                println!("Warning: Per-key RGB not supported on this keyboard");
+                println!("Falling back to setting first color on entire keyboard");
+                keyboard.set_color(key_colors[0].1)?;
+                keyboard.apply()?;
+                return Ok(());
+            }
+
+            println!("Setting {} keys to their respective colors", key_colors.len());
+            keyboard.set_key_colors(&key_colors)?;
+            keyboard.apply()?;
+            println!("Done!");
+        }
+
+        PerKeyAction::SetRegion { start_row, start_col, rows, cols, color } => {
+            let color = parse_color(&color)
+                .ok_or_else(|| Error::Other(format!("Invalid color: {}", color)))?;
+
+            println!("Setting region ({},{}) to ({},{}) to color {}",
+                     start_row, start_col, start_row + rows - 1, start_col + cols - 1, color);
+
+            keyboard.set_key_region(start_row, start_col, rows, cols, color)?;
+            keyboard.apply()?;
+            println!("Done!");
+        }
+
+        PerKeyAction::Clear => {
+            println!("Clearing all per-key RGB (setting all keys to black)");
+            keyboard.clear_per_key_rgb()?;
+            keyboard.apply()?;
+            println!("Done!");
+        }
+
+        PerKeyAction::TestMatrix { row, col, color } => {
+            let color = parse_color(&color)
+                .ok_or_else(|| Error::Other(format!("Invalid color: {}", color)))?;
+
+            println!("Testing matrix position ({}, {}) with color {}", row, col, color);
+            let address = KeyAddress::new(row, col);
+            keyboard.set_key_color_direct(address, color)?;
+            keyboard.apply()?;
+            println!("Done! If no key lights up, this matrix position might not exist.");
+        }
+
+        PerKeyAction::TestPattern { pattern } => {
+            let pattern_name = pattern.to_ascii_lowercase();
+            match pattern_name.as_str() {
+                "rainbow" => {
+                    println!("Testing rainbow pattern across keyboard");
+                    test_rainbow_pattern(keyboard)?;
+                }
+                "checkerboard" => {
+                    println!("Testing checkerboard pattern");
+                    test_checkerboard_pattern(keyboard)?;
+                }
+                "wave" => {
+                    println!("Testing wave pattern");
+                    test_wave_pattern(keyboard)?;
+                }
+                "test" => {
+                    println!("Testing basic key positions");
+                    test_basic_positions(keyboard)?;
+                }
+                _ => {
+                    return Err(Error::Other(format!("Unknown pattern: {}. Available: rainbow, checkerboard, wave, test", pattern)));
+                }
+            }
+            keyboard.apply()?;
+            println!("Pattern applied!");
+        }
+
+        PerKeyAction::ShowMapping => {
+            if let Some(mapping) = keyboard.get_key_mapping() {
+                println!("Key mapping for {}:", mapping.name);
+                println!("Layout: {:?}", mapping.layout);
+                println!("Matrix dimensions: {}x{}", mapping.matrix_rows, mapping.matrix_cols);
+
+                let stats = mapping.get_stats();
+                println!("Statistics: {}", stats);
+
+                // Show some sample key mappings
+                let sample_keys = [KeyId::A, KeyId::S, KeyId::D, KeyId::Enter, KeyId::Space, KeyId::Escape];
+                println!("\nSample key mappings:");
+                for key_id in sample_keys.iter() {
+                    if let Some(address) = mapping.get_key_address(*key_id) {
+                        println!("  {} -> {}", key_id, address);
+                    }
+                }
+
+                if mapping.total_keys > 6 {
+                    println!("  ... and {} more keys", mapping.total_keys - 6);
+                }
+            } else {
+                println!("No key mapping available for this keyboard");
+                println!("Per-key RGB control is not supported");
+            }
+        }
+
+        PerKeyAction::Status => {
+            println!("Per-key RGB Status:");
+            println!("Supported: {}", keyboard.supports_per_key_rgb());
+
+            if let Some(mapping) = keyboard.get_key_mapping() {
+                println!("Key mapping: {} ({:?})", mapping.name, mapping.layout);
+                println!("Total keys: {}", mapping.total_keys);
+                let stats = mapping.get_stats();
+                println!("Matrix utilization: {:.1}%", stats.utilization);
+            } else {
+                println!("Key mapping: None available");
+            }
+
+            println!("Zone count: {}", keyboard.zone_count());
+        }
+    }
+
+    Ok(())
+}
+
+// Helper functions for pattern testing
+fn test_rainbow_pattern(keyboard: &mut Box<dyn Keyboard>) -> Result<()> {
+    let colors = [
+        Color::RED, Color::ORANGE, Color::YELLOW, Color::GREEN,
+        Color::CYAN, Color::BLUE, Color::PURPLE, Color::MAGENTA
+    ];
+
+    if keyboard.supports_per_key_rgb() {
+        // Use logical key mapping if available
+        if let Some(mapping) = keyboard.get_key_mapping() {
+            let all_keys = mapping.get_all_keys();
+            let mut key_colors = Vec::new();
+
+            for (i, key_id) in all_keys.iter().enumerate() {
+                let color = colors[i % colors.len()];
+                key_colors.push((*key_id, color));
+            }
+
+            keyboard.set_key_colors(&key_colors)?;
+        } else {
+            // Fallback to matrix addressing
+            let mut direct_colors = Vec::new();
+            for row in 0..6 {
+                for col in 0..17 {
+                    let color_idx = (row * 17 + col) % colors.len() as u8;
+                    direct_colors.push((KeyAddress::new(row, col), colors[color_idx as usize]));
+                }
+            }
+            keyboard.set_key_colors_direct(&direct_colors)?;
+        }
+    } else {
+        // Fallback to zone-based rainbow
+        let zone_colors: Vec<Color> = (0..keyboard.zone_count())
+            .map(|i| colors[i % colors.len()])
+            .collect();
+        keyboard.set_zone_colors(&zone_colors)?;
+    }
+
+    Ok(())
+}
+
+fn test_checkerboard_pattern(keyboard: &mut Box<dyn Keyboard>) -> Result<()> {
+    let mut direct_colors = Vec::new();
+
+    for row in 0..6 {
+        for col in 0..17 {
+            let color = if (row + col) % 2 == 0 {
+                Color::WHITE
+            } else {
+                Color::BLACK
+            };
+            direct_colors.push((KeyAddress::new(row, col), color));
+        }
+    }
+
+    if keyboard.supports_per_key_rgb() {
+        keyboard.set_key_colors_direct(&direct_colors)?;
+    } else {
+        println!("Checkerboard pattern requires per-key RGB support");
+        keyboard.set_color(Color::WHITE)?;
+    }
+
+    Ok(())
+}
+
+fn test_wave_pattern(keyboard: &mut Box<dyn Keyboard>) -> Result<()> {
+    let mut direct_colors = Vec::new();
+
+    for row in 0..6 {
+        for col in 0..17 {
+            let wave_pos = (col as f32 / 17.0) * 2.0 * std::f32::consts::PI;
+            let intensity = ((wave_pos.sin() + 1.0) / 2.0 * 255.0) as u8;
+            let color = Color::new(intensity, 0, 255 - intensity);
+            direct_colors.push((KeyAddress::new(row, col), color));
+        }
+    }
+
+    if keyboard.supports_per_key_rgb() {
+        keyboard.set_key_colors_direct(&direct_colors)?;
+    } else {
+        println!("Wave pattern requires per-key RGB support");
+        keyboard.set_color(Color::PURPLE)?;
+    }
+
+    Ok(())
+}
+
+fn test_basic_positions(keyboard: &mut Box<dyn Keyboard>) -> Result<()> {
+    // Test corners and center positions
+    let test_positions = [
+        (KeyAddress::new(0, 0), Color::RED),     // Top-left
+        (KeyAddress::new(0, 16), Color::GREEN),  // Top-right
+        (KeyAddress::new(5, 0), Color::BLUE),    // Bottom-left
+        (KeyAddress::new(5, 16), Color::YELLOW), // Bottom-right
+        (KeyAddress::new(2, 8), Color::WHITE),   // Center
+    ];
+
+    if keyboard.supports_per_key_rgb() {
+        keyboard.set_key_colors_direct(&test_positions)?;
+    } else {
+        println!("Basic position test requires per-key RGB support");
+        keyboard.set_color(Color::WHITE)?;
+    }
+
+    Ok(())
+}
+
+fn parse_key_name(name: &str) -> Option<KeyId> {
+    let name_upper = name.to_ascii_uppercase();
+    match name_upper.as_str() {
+        // Letters
+        "A" => Some(KeyId::A), "B" => Some(KeyId::B), "C" => Some(KeyId::C), "D" => Some(KeyId::D),
+        "E" => Some(KeyId::E), "F" => Some(KeyId::F), "G" => Some(KeyId::G), "H" => Some(KeyId::H),
+        "I" => Some(KeyId::I), "J" => Some(KeyId::J), "K" => Some(KeyId::K), "L" => Some(KeyId::L),
+        "M" => Some(KeyId::M), "N" => Some(KeyId::N), "O" => Some(KeyId::O), "P" => Some(KeyId::P),
+        "Q" => Some(KeyId::Q), "R" => Some(KeyId::R), "S" => Some(KeyId::S), "T" => Some(KeyId::T),
+        "U" => Some(KeyId::U), "V" => Some(KeyId::V), "W" => Some(KeyId::W), "X" => Some(KeyId::X),
+        "Y" => Some(KeyId::Y), "Z" => Some(KeyId::Z),
+
+        // Numbers
+        "1" => Some(KeyId::Key1), "2" => Some(KeyId::Key2), "3" => Some(KeyId::Key3),
+        "4" => Some(KeyId::Key4), "5" => Some(KeyId::Key5), "6" => Some(KeyId::Key6),
+        "7" => Some(KeyId::Key7), "8" => Some(KeyId::Key8), "9" => Some(KeyId::Key9),
+        "0" => Some(KeyId::Key0),
+
+        // Function keys
+        "F1" => Some(KeyId::F1), "F2" => Some(KeyId::F2), "F3" => Some(KeyId::F3),
+        "F4" => Some(KeyId::F4), "F5" => Some(KeyId::F5), "F6" => Some(KeyId::F6),
+        "F7" => Some(KeyId::F7), "F8" => Some(KeyId::F8), "F9" => Some(KeyId::F9),
+        "F10" => Some(KeyId::F10), "F11" => Some(KeyId::F11), "F12" => Some(KeyId::F12),
+
+        // Special keys
+        "ENTER" | "RETURN" => Some(KeyId::Enter),
+        "SPACE" | "SPACEBAR" => Some(KeyId::Space),
+        "ESC" | "ESCAPE" => Some(KeyId::Escape),
+        "TAB" => Some(KeyId::Tab),
+        "SHIFT" => Some(KeyId::LeftShift),
+        "CTRL" => Some(KeyId::LeftCtrl),
+        "ALT" => Some(KeyId::LeftAlt),
+        "WIN" | "WINDOWS" => Some(KeyId::LeftWin),
+        "CAPS" | "CAPSLOCK" => Some(KeyId::CapsLock),
+        "BACKSPACE" => Some(KeyId::Backspace),
+
+        // Arrows
+        "UP" | "ARROWUP" => Some(KeyId::ArrowUp),
+        "DOWN" | "ARROWDOWN" => Some(KeyId::ArrowDown),
+        "LEFT" | "ARROWLEFT" => Some(KeyId::ArrowLeft),
+        "RIGHT" | "ARROWRIGHT" => Some(KeyId::ArrowRight),
+
+        // Punctuation
+        ";" | "SEMICOLON" => Some(KeyId::Semicolon),
+        "'" | "QUOTE" => Some(KeyId::Quote),
+        "," | "COMMA" => Some(KeyId::Comma),
+        "." | "PERIOD" => Some(KeyId::Period),
+        "/" | "SLASH" => Some(KeyId::Slash),
+        "[" | "LEFTBRACKET" => Some(KeyId::LeftBracket),
+        "]" | "RIGHTBRACKET" => Some(KeyId::RightBracket),
+        "\\" | "BACKSLASH" => Some(KeyId::Backslash),
+        "-" | "MINUS" => Some(KeyId::Minus),
+        "=" | "EQUAL" => Some(KeyId::Equal),
+        "`" | "BACKTICK" => Some(KeyId::Backtick),
+
+        _ => None,
+    }
+}
+
+fn cmd_profile(action: ProfileAction) -> Result<()> {
     let mut profile_manager = ProfileManager::new()?;
 
     match action {
@@ -601,7 +1104,7 @@ fn cmd_profile(action: ProfileAction) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cmd_pollrate(action: PollrateAction) -> anyhow::Result<()> {
+fn cmd_pollrate(action: PollrateAction) -> Result<()> {
     use steelseries_gg::pollrate::{DeviceType, PollRate, get_poll_rate, set_poll_rate};
 
     match action {
@@ -676,7 +1179,7 @@ fn cmd_pollrate(action: PollrateAction) -> anyhow::Result<()> {
 }
 
 #[cfg(feature = "audio")]
-fn cmd_audio(action: AudioAction) -> anyhow::Result<()> {
+fn cmd_audio(action: AudioAction) -> Result<()> {
     let mut mixer = AudioMixer::new()?;
 
     match action {
@@ -698,7 +1201,7 @@ fn cmd_audio(action: AudioAction) -> anyhow::Result<()> {
 
         AudioAction::Volume { channel, level } => {
             let ch = parse_channel(&channel)
-                .ok_or_else(|| anyhow::anyhow!("Invalid channel: {}", channel))?;
+                .ok_or_else(|| Error::Other(format!("Invalid channel: {}", channel)))?;
 
             let volume = normalize_volume(level);
             mixer.set_volume(ch, volume)?;
@@ -707,7 +1210,7 @@ fn cmd_audio(action: AudioAction) -> anyhow::Result<()> {
 
         AudioAction::Mute { channel, state } => {
             let ch = parse_channel(&channel)
-                .ok_or_else(|| anyhow::anyhow!("Invalid channel: {}", channel))?;
+                .ok_or_else(|| Error::Other(format!("Invalid channel: {}", channel)))?;
 
             let muted = match state {
                 Some(s) => {
@@ -731,7 +1234,7 @@ fn cmd_audio(action: AudioAction) -> anyhow::Result<()> {
 }
 
 #[cfg(feature = "sonar")]
-async fn cmd_sonar(action: SonarAction) -> anyhow::Result<()> {
+async fn cmd_sonar(action: SonarAction) -> Result<()> {
     match action {
         SonarAction::Status => {
             println!("Connecting to SteelSeries Sonar...");
@@ -866,7 +1369,415 @@ async fn cmd_sonar(action: SonarAction) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn cmd_server(port: u16) -> anyhow::Result<()> {
+fn cmd_validate(
+    manager: &DeviceManager,
+    benchmark: bool,
+    timeout: u64,
+    output: Option<String>,
+    json: bool
+) -> Result<()> {
+    info!("Starting RGB system validation...");
+
+    let timeout_duration = Duration::from_secs(timeout);
+    let mut validator = RgbValidator::new()
+        .with_timeout(timeout_duration);
+
+    if benchmark {
+        validator = validator.with_benchmarks();
+        info!("Performance benchmarks enabled");
+    }
+
+    let devices = manager.devices();
+    let keyboards: Vec<_> = devices.into_iter()
+        .filter(|info| info.device_type == DeviceType::Keyboard)
+        .collect();
+
+    if keyboards.is_empty() {
+        println!("⚠️  No SteelSeries keyboards found for validation");
+        return Ok(());
+    }
+
+    println!("🔍 Found {} keyboard(s) for validation", keyboards.len());
+    let mut all_reports = Vec::new();
+
+    for device_info in keyboards {
+        println!("\n📋 Validating: {} (PID: 0x{:04x})",
+                device_info.name, device_info.product_id);
+
+        match manager.open_keyboard(&device_info) {
+            Ok(mut keyboard) => {
+                let report = validator.validate_keyboard(&mut *keyboard);
+
+                // Display summary
+                let status = if report.is_healthy() { "✅ HEALTHY" } else { "❌ ISSUES DETECTED" };
+                println!("   Status: {}", status);
+                println!("   Health Score: {:.1}%", report.health_score);
+                println!("   Tests: {}/{} passed",
+                    report.results.iter().filter(|r| r.passed).count(),
+                    report.results.len());
+
+                if report.capabilities.per_key_rgb {
+                    println!("   🎹 Per-key RGB: Supported ({} keys)",
+                        report.capabilities.key_count);
+                } else {
+                    println!("   🌈 Zone RGB: {} zones", report.capabilities.zone_count);
+                }
+
+                if benchmark {
+                    println!("   🚀 Performance: {:.1}ms avg, {:.0} fps effective",
+                        report.performance.avg_effect_compute_ms + report.performance.avg_hid_communication_ms,
+                        report.performance.effective_refresh_rate);
+                }
+
+                // Show failed tests if any
+                let failed_tests = report.failed_tests();
+                if !failed_tests.is_empty() {
+                    println!("   ❌ Failed tests:");
+                    for test in failed_tests {
+                        println!("      - {}: {}",
+                            test.name,
+                            test.error.as_ref().unwrap_or(&"Unknown error".to_string()));
+                    }
+                }
+
+                all_reports.push(report);
+            }
+            Err(e) => {
+                eprintln!("❌ Failed to open {}: {}", device_info.name, e);
+            }
+        }
+    }
+
+    // Export report if requested
+    if let Some(output_path) = output {
+        info!("Exporting validation report to: {}", output_path);
+
+        let export_content = if json {
+            // Export as JSON
+            serde_json::to_string_pretty(&all_reports)
+                .map_err(|e| Error::DeviceCommunication(format!("JSON serialization failed: {}", e)))?
+        } else {
+            // Export as human-readable text
+            let mut content = String::new();
+            content.push_str("# SteelSeries RGB Validation Report\n\n");
+            content.push_str(&format!("Generated: {}\n", chrono::Utc::now().to_rfc3339()));
+            content.push_str(&format!("Total devices: {}\n\n", all_reports.len()));
+
+            for (i, report) in all_reports.iter().enumerate() {
+                content.push_str(&format!("## Device {} - {}\n", i + 1, report.device_info.name));
+                content.push_str(&format!("- Product ID: 0x{:04x}\n", report.device_info.product_id));
+                content.push_str(&format!("- Health Score: {:.1}%\n", report.health_score));
+                content.push_str(&format!("- Status: {}\n", if report.is_healthy() { "Healthy" } else { "Issues Detected" }));
+
+                content.push_str("\n### Test Results\n");
+                for result in &report.results {
+                    let status = if result.passed { "✅" } else { "❌" };
+                    content.push_str(&format!("- {} {} ({:.0}ms)\n",
+                        status, result.name, result.duration_ms));
+
+                    if let Some(error) = &result.error {
+                        content.push_str(&format!("  Error: {}\n", error));
+                    }
+
+                    for note in &result.notes {
+                        content.push_str(&format!("  Note: {}\n", note));
+                    }
+                }
+                content.push_str("\n");
+            }
+            content
+        };
+
+        std::fs::write(&output_path, export_content)
+            .map_err(|e| Error::DeviceCommunication(format!("Failed to write report: {}", e)))?;
+
+        println!("\n📄 Validation report exported to: {}", output_path);
+    }
+
+    // Overall summary
+    let total_healthy = all_reports.iter().filter(|r| r.is_healthy()).count();
+    println!("\n📊 Validation Summary:");
+    println!("   Total devices: {}", all_reports.len());
+    println!("   Healthy devices: {}/{}", total_healthy, all_reports.len());
+
+    if total_healthy == all_reports.len() {
+        println!("   🎉 All devices passed validation!");
+    } else {
+        println!("   ⚠️  Some devices have issues - check details above");
+    }
+
+    Ok(())
+}
+
+fn cmd_performance(manager: &DeviceManager, action: PerformanceAction) -> Result<()> {
+    let keyboards: Vec<_> = manager.devices()
+        .into_iter()
+        .filter(|info| info.device_type == DeviceType::Keyboard)
+        .collect();
+
+    if keyboards.is_empty() {
+        println!("⚠️  No SteelSeries keyboards found for performance monitoring");
+        return Ok(());
+    }
+
+    match action {
+        PerformanceAction::Stats { monitor, output, json } => {
+            if let Some(interval_seconds) = monitor {
+                println!("🔄 Monitoring RGB performance (press Ctrl+C to stop)...");
+                loop {
+                    display_performance_stats(manager, &keyboards, json)?;
+
+                    if let Some(ref output_path) = output {
+                        export_performance_stats(manager, &keyboards, output_path, json)?;
+                    }
+
+                    std::thread::sleep(Duration::from_secs(interval_seconds));
+                }
+            } else {
+                display_performance_stats(manager, &keyboards, json)?;
+
+                if let Some(output_path) = output {
+                    export_performance_stats(manager, &keyboards, &output_path, json)?;
+                    println!("📄 Performance stats exported to: {}", output_path);
+                }
+            }
+        }
+
+        PerformanceAction::Enable => {
+            println!("🚀 Enabling performance optimizations...");
+            let mut enabled_count = 0;
+
+            for device_info in &keyboards {
+                match manager.open_keyboard(device_info) {
+                    Ok(mut keyboard) => {
+                        keyboard.set_performance_optimization(true);
+                        enabled_count += 1;
+                        println!("   ✅ {} - Performance optimizations enabled", device_info.name);
+                    }
+                    Err(e) => {
+                        eprintln!("   ❌ {} - Failed to open: {}", device_info.name, e);
+                    }
+                }
+            }
+
+            println!("✅ Performance optimizations enabled on {}/{} keyboards", enabled_count, keyboards.len());
+        }
+
+        PerformanceAction::Disable => {
+            println!("⏸️  Disabling performance optimizations...");
+            let mut disabled_count = 0;
+
+            for device_info in &keyboards {
+                match manager.open_keyboard(device_info) {
+                    Ok(mut keyboard) => {
+                        keyboard.set_performance_optimization(false);
+                        disabled_count += 1;
+                        println!("   ✅ {} - Performance optimizations disabled", device_info.name);
+                    }
+                    Err(e) => {
+                        eprintln!("   ❌ {} - Failed to open: {}", device_info.name, e);
+                    }
+                }
+            }
+
+            println!("✅ Performance optimizations disabled on {}/{} keyboards", disabled_count, keyboards.len());
+        }
+
+        PerformanceAction::Cleanup => {
+            println!("🧹 Cleaning up performance caches...");
+            let mut cleaned_count = 0;
+
+            for device_info in &keyboards {
+                match manager.open_keyboard(device_info) {
+                    Ok(mut keyboard) => {
+                        keyboard.cleanup_rgb_caches();
+                        cleaned_count += 1;
+                        println!("   ✅ {} - Caches cleaned", device_info.name);
+                    }
+                    Err(e) => {
+                        eprintln!("   ❌ {} - Failed to open: {}", device_info.name, e);
+                    }
+                }
+            }
+
+            println!("✅ Cleaned caches on {}/{} keyboards", cleaned_count, keyboards.len());
+        }
+
+        PerformanceAction::Benchmark { duration, output } => {
+            println!("🏃 Running performance benchmark for {} seconds...", duration);
+
+            let start_time = Instant::now();
+            let mut benchmark_results = HashMap::new();
+
+            // Run benchmark on each keyboard
+            for device_info in &keyboards {
+                match manager.open_keyboard(device_info) {
+                    Ok(mut keyboard) => {
+                        println!("   🔬 Benchmarking: {}", device_info.name);
+
+                        // Enable performance optimizations for benchmark
+                        keyboard.set_performance_optimization(true);
+
+                        let device_start = Instant::now();
+                        let mut operation_count = 0;
+
+                        // Run rapid RGB operations for benchmark duration
+                        while device_start.elapsed().as_secs() < duration {
+                            let colors = vec![
+                                Color::RED, Color::GREEN, Color::BLUE,
+                                Color::WHITE, Color::BLACK
+                            ];
+
+                            for color in colors {
+                                let _ = keyboard.set_color(color);
+                                operation_count += 1;
+
+                                // Small delay to prevent overwhelming the device
+                                std::thread::sleep(Duration::from_millis(1));
+                            }
+                        }
+
+                        let ops_per_second = operation_count as f64 / duration as f64;
+                        benchmark_results.insert(device_info.name.clone(), ops_per_second);
+
+                        println!("      Operations/second: {:.1}", ops_per_second);
+
+                        // Display performance stats if available
+                        if let Some(stats) = keyboard.get_rgb_performance_stats() {
+                            println!("      Cache hit rate: {:.1}%", stats.cache_hit_rate * 100.0);
+                            println!("      Avg computation: {:.2}μs", stats.avg_computation_time_us);
+                            println!("      Current refresh rate: {:.1} Hz", stats.current_refresh_rate);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("   ❌ {} - Failed to benchmark: {}", device_info.name, e);
+                    }
+                }
+            }
+
+            // Export benchmark results if requested
+            if let Some(output_path) = output {
+                let benchmark_data = serde_json::json!({
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                    "duration_seconds": duration,
+                    "results": benchmark_results
+                });
+
+                std::fs::write(&output_path, serde_json::to_string_pretty(&benchmark_data)?)
+                    .map_err(|e| Error::DeviceCommunication(format!("Failed to write benchmark: {}", e)))?;
+
+                println!("📄 Benchmark results exported to: {}", output_path);
+            }
+
+            println!("✅ Benchmark completed in {:.1}s", start_time.elapsed().as_secs_f64());
+        }
+    }
+
+    Ok(())
+}
+
+fn display_performance_stats(manager: &DeviceManager, keyboards: &[&DeviceInfo], json: bool) -> Result<()> {
+    if json {
+        let mut all_stats = HashMap::new();
+
+        for device_info in keyboards {
+            if let Ok(keyboard) = manager.open_keyboard(device_info) {
+                if let Some(stats) = keyboard.get_rgb_performance_stats() {
+                    all_stats.insert(device_info.name.clone(), stats.clone());
+                }
+            }
+        }
+
+        println!("{}", serde_json::to_string_pretty(&all_stats)?);
+    } else {
+        println!("📊 RGB Performance Statistics:");
+        println!();
+
+        for device_info in keyboards {
+            match manager.open_keyboard(device_info) {
+                Ok(keyboard) => {
+                    println!("🎹 {}", device_info.name);
+
+                    if let Some(stats) = keyboard.get_rgb_performance_stats() {
+                        println!("   💾 Cache hit rate: {:.1}%", stats.cache_hit_rate * 100.0);
+                        println!("   ⚡ Avg computation: {:.2}μs", stats.avg_computation_time_us);
+                        println!("   🔄 Current refresh rate: {:.1} Hz", stats.current_refresh_rate);
+                        println!("   📈 Total computations: {}", stats.total_computations);
+                        println!("   🔀 Operations batched: {}", stats.hid_operations_batched);
+                        println!("   💽 Allocations saved: {}", stats.allocations_saved);
+                        println!("   📊 Memory utilization: {:.1}%", stats.memory_pool_utilization * 100.0);
+
+                        if let Some(frame_time) = keyboard.get_optimal_frame_time() {
+                            println!("   🕐 Optimal frame time: {:.1}ms", frame_time.as_millis());
+                        }
+                    } else {
+                        println!("   ⚠️  Performance stats not available (optimizations disabled)");
+                    }
+                    println!();
+                }
+                Err(e) => {
+                    println!("❌ {}: Failed to open - {}", device_info.name, e);
+                    println!();
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn export_performance_stats(manager: &DeviceManager, keyboards: &[&DeviceInfo], output_path: &str, json: bool) -> Result<()> {
+    if json {
+        let mut all_stats = HashMap::new();
+
+        for device_info in keyboards {
+            if let Ok(keyboard) = manager.open_keyboard(device_info) {
+                if let Some(stats) = keyboard.get_rgb_performance_stats() {
+                    all_stats.insert(device_info.name.clone(), stats.clone());
+                }
+            }
+        }
+
+        let export_data = serde_json::json!({
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "devices": all_stats
+        });
+
+        std::fs::write(output_path, serde_json::to_string_pretty(&export_data)?)
+            .map_err(|e| Error::DeviceCommunication(format!("Failed to write stats: {}", e)))?;
+    } else {
+        let mut content = String::new();
+        content.push_str("# RGB Performance Statistics Report\n\n");
+        content.push_str(&format!("Generated: {}\n\n", chrono::Utc::now().to_rfc3339()));
+
+        for device_info in keyboards {
+            if let Ok(keyboard) = manager.open_keyboard(device_info) {
+                content.push_str(&format!("## {}\n", device_info.name));
+                content.push_str(&format!("- Product ID: 0x{:04x}\n", device_info.product_id));
+
+                if let Some(stats) = keyboard.get_rgb_performance_stats() {
+                    content.push_str(&format!("- Cache hit rate: {:.1}%\n", stats.cache_hit_rate * 100.0));
+                    content.push_str(&format!("- Avg computation time: {:.2}μs\n", stats.avg_computation_time_us));
+                    content.push_str(&format!("- Current refresh rate: {:.1} Hz\n", stats.current_refresh_rate));
+                    content.push_str(&format!("- Total computations: {}\n", stats.total_computations));
+                    content.push_str(&format!("- Operations batched: {}\n", stats.hid_operations_batched));
+                    content.push_str(&format!("- Allocations saved: {}\n", stats.allocations_saved));
+                    content.push_str(&format!("- Memory pool utilization: {:.1}%\n", stats.memory_pool_utilization * 100.0));
+                } else {
+                    content.push_str("- Performance stats: Not available\n");
+                }
+                content.push_str("\n");
+            }
+        }
+
+        std::fs::write(output_path, content)
+            .map_err(|e| Error::DeviceCommunication(format!("Failed to write stats: {}", e)))?;
+    }
+
+    Ok(())
+}
+
+async fn cmd_server(port: u16) -> Result<()> {
     info!("Starting GameSense server on port {}", port);
 
     let server = GameSenseServer::new("127.0.0.1", port)?;
@@ -890,7 +1801,7 @@ impl DaemonState {
     }
 }
 
-async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
+async fn cmd_daemon(manager: DeviceManager) -> Result<()> {
     info!("Starting SteelSeries GG daemon");
 
     let config = Config::load()?;
@@ -974,20 +1885,30 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
         tokio::spawn(async move {
             match GameSenseServer::new(&gs_bind, gs_port) {
                 Ok(server) => {
-                    // Set RGB callback to update overlays
+                    // Set RGB callback to update overlays with optimized async handling
                     server
                         .set_rgb_callback(move |zone: &str, r: u8, g: u8, b: u8| {
-                            let state = daemon_state_clone.clone();
+                            let state = &daemon_state_clone; // Use reference instead of double-cloning
                             let zone_owned = zone.to_string();
-                            tokio::spawn(async move {
-                                let mut state = state.write().await;
-                                let color = Color::new(r, g, b);
-                                let expiry = std::time::Instant::now() + Duration::from_secs(30);
-                                state
-                                    .gamesense_overlays
-                                    .insert(zone_owned.clone(), (color, expiry));
+
+                            // Use a more efficient approach - avoid spawning tasks for simple operations
+                            let color = Color::new(r, g, b);
+                            let expiry = std::time::Instant::now() + Duration::from_secs(30);
+
+                            // Use try_write to avoid blocking if the lock is busy
+                            if let Ok(mut state_guard) = state.try_write() {
+                                state_guard.gamesense_overlays.insert(zone_owned.clone(), (color, expiry));
                                 tracing::debug!("GameSense overlay: {} = {:?}", zone_owned, color);
-                            });
+                            } else {
+                                // If we can't get the lock immediately, spawn a task
+                                let state_clone = daemon_state_clone.clone();
+                                let zone_deferred = zone_owned.clone();
+                                tokio::spawn(async move {
+                                    let mut state = state_clone.write().await;
+                                    state.gamesense_overlays.insert(zone_deferred.clone(), (color, expiry));
+                                    tracing::debug!("GameSense overlay (deferred): {} = {:?}", zone_deferred, color);
+                                });
+                            }
                         })
                         .await;
 
@@ -1042,35 +1963,93 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
 
     info!("Daemon running. Press Ctrl+C to stop.");
 
-    // Spawn RGB animation loop
+    // Spawn RGB animation loop with adaptive timing and performance monitoring
     let daemon_state_anim = daemon_state.clone();
     let animation_task = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_millis(33)); // ~30 FPS
-        let mut last_write = std::time::Instant::now();
+        use steelseries_gg::performance::{PerformanceMonitor, calculate_effect_complexity, estimate_memory_usage};
+
+        // Initialize performance monitor for adaptive timing
+        let mut performance_monitor = PerformanceMonitor::new();
+
+        // Start with base interval (50ms for compatibility, will be adapted)
+        let mut interval = tokio::time::interval(Duration::from_millis(50));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        // Frame timing tracking
+        let mut last_frame_start = Instant::now();
+        let mut frames_processed = 0u64;
 
         loop {
+            let frame_start = Instant::now();
             interval.tick().await;
 
-            let mut state = daemon_state_anim.write().await;
+            // Determine current effect complexity by examining active effects
+            let current_complexity = {
+                let state = daemon_state_anim.read().await;
+                let mut max_complexity = steelseries_gg::performance::EffectComplexity::Simple;
 
-            // Clean up expired overlays
-            let now = std::time::Instant::now();
-            state
-                .gamesense_overlays
-                .retain(|_, (_, expiry)| *expiry > now);
+                for (_, (_, controller, _)) in state.keyboards.iter() {
+                    let effect = controller.effect();
+                    let effect_complexity = calculate_effect_complexity(effect);
+                    if effect_complexity as u8 > max_complexity as u8 {
+                        max_complexity = effect_complexity;
+                    }
+                }
+                max_complexity
+            };
 
-            // Rate limiting: only write every 50ms to avoid USB spam
-            if last_write.elapsed() < Duration::from_millis(50) {
-                continue;
+            // Update performance monitor with current complexity
+            performance_monitor.set_effect_complexity(current_complexity);
+
+            // Track frame timing from previous iteration
+            if frames_processed > 0 {
+                let frame_duration = frame_start.duration_since(last_frame_start);
+                // Estimate computation time (we'll measure actual computation below)
+                let computation_start = Instant::now();
+
+                // Update memory usage periodically
+                if frames_processed % 60 == 0 {
+                    performance_monitor.update_memory_usage(estimate_memory_usage());
+                }
+
+                // Record performance metrics
+                let computation_time = computation_start.elapsed(); // Will be updated with actual time
+                performance_monitor.record_frame_timing(frame_duration, computation_time);
+
+                // Log performance summary periodically
+                if frames_processed % 300 == 0 { // Every 5 seconds at 60fps
+                    tracing::debug!("RGB Performance: {}", performance_monitor.performance_summary());
+                }
             }
 
-            // Clone overlays to avoid borrowing conflicts
-            let overlays = state.gamesense_overlays.clone();
+            let computation_start = Instant::now();
 
-            for (serial, (keyboard, controller, _info)) in state.keyboards.iter_mut() {
-                let mut colors = controller.compute_colors();
+            // Split the work: read operations first, then write operations
+            let (keyboards_data, overlays, _now) = {
+                let mut state = daemon_state_anim.write().await;
 
-                // Apply GameSense overlays using simple zone mapping.
+                // Clean up expired overlays while we have the lock
+                let now = std::time::Instant::now();
+                state.gamesense_overlays.retain(|_, (_, expiry)| *expiry > now);
+
+                // Collect data needed for RGB computation to minimize lock time
+                let keyboards_data: Vec<_> = state.keyboards.iter_mut().map(|(serial, (_, controller, info))| {
+                    (serial.clone(), controller.compute_colors().to_vec(), info.clone())
+                }).collect();
+
+                // Clone overlays only if there are any
+                let overlays = if state.gamesense_overlays.is_empty() {
+                    HashMap::new()
+                } else {
+                    state.gamesense_overlays.clone()
+                };
+
+                (keyboards_data, overlays, now)
+            };
+
+            // Process RGB updates for each keyboard without holding the lock
+            for (serial, mut colors, _info) in keyboards_data {
+                // Apply GameSense overlays using simple zone mapping
                 if !overlays.is_empty() {
                     let zone_count = colors.len();
                     for (zone, (overlay_color, _)) in overlays.iter() {
@@ -1092,12 +2071,57 @@ async fn cmd_daemon(manager: DeviceManager) -> anyhow::Result<()> {
                     }
                 }
 
-                if let Err(e) = keyboard.set_zone_colors(&colors) {
-                    tracing::warn!("Failed to update keyboard {}: {}", serial, e);
+                // Apply colors to hardware - get keyboard reference with minimal lock time
+                {
+                    let mut state = daemon_state_anim.write().await;
+                    if let Some((keyboard, _, _)) = state.keyboards.get_mut(&serial) {
+                        if let Err(e) = keyboard.set_zone_colors(&colors) {
+                            tracing::warn!("Failed to update keyboard {}: {}", serial, e);
+                        }
+                    }
+                    // Lock is automatically dropped here
                 }
             }
 
-            last_write = now;
+            // Record actual computation time
+            let computation_time = computation_start.elapsed();
+            performance_monitor.record_frame_timing(frame_start.elapsed(), computation_time);
+
+            // Calculate optimal timing for next iteration
+            let optimal_interval = performance_monitor.calculate_optimal_timing();
+
+            // Update interval if it has changed significantly (>2ms difference)
+            let current_interval_ms = interval.period().as_millis() as u64;
+            let optimal_interval_ms = optimal_interval.as_millis() as u64;
+
+            if optimal_interval_ms.abs_diff(current_interval_ms) > 2 {
+                // Create new interval with optimal timing
+                interval = tokio::time::interval(optimal_interval);
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+                tracing::debug!(
+                    "Adapted RGB timing: {}ms -> {}ms (complexity: {:?})",
+                    current_interval_ms,
+                    optimal_interval_ms,
+                    current_complexity
+                );
+            }
+
+            // Performance degradation detection and recovery
+            if performance_monitor.is_performance_degraded() {
+                tracing::warn!(
+                    "RGB performance degraded, applying recovery measures: {}",
+                    performance_monitor.performance_summary()
+                );
+
+                // Temporary graceful degradation - increase interval by 50%
+                let degraded_interval = optimal_interval.mul_f32(1.5);
+                interval = tokio::time::interval(degraded_interval);
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            }
+
+            last_frame_start = frame_start;
+            frames_processed += 1;
         }
     });
 

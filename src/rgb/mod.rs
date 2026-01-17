@@ -1070,6 +1070,26 @@ impl RgbController {
         self.brightness
     }
 
+    /// Get the current effect.
+    pub fn effect(&self) -> &Effect {
+        self.engine.effect()
+    }
+
+    /// Get the current timing mode.
+    pub fn timing_mode(&self) -> TimingMode {
+        self.engine.timing_mode()
+    }
+
+    /// Set the timing mode.
+    pub fn set_timing_mode(&mut self, mode: TimingMode) {
+        self.engine.set_timing_mode(mode);
+    }
+
+    /// Calculate frame budget for the current effect and timing mode.
+    pub fn calculate_frame_budget(&self) -> Duration {
+        self.engine.calculate_frame_budget()
+    }
+
     /// Compute current colors with brightness applied.
     /// This method reuses an internal buffer to avoid allocations.
     #[inline]
