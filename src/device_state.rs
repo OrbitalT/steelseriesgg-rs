@@ -4,12 +4,19 @@
 //! functionality, this module maintains a store of the last-applied settings keyed by
 //! device identity. We prefer stable identifiers (path/interface) when serial numbers
 //! are missing to avoid collisions across multiple identical devices.
+//!
+//! This module provides async device state persistence with write-behind caching to prevent
+//! blocking RGB updates during high-frequency operations.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::{Mutex, RwLock};
+use tokio::time::interval;
+use tracing::{debug, error, trace};
 
 use crate::config::Config;
 use crate::devices::DeviceInfo;
@@ -17,10 +24,18 @@ use crate::rgb::Effect;
 use crate::{Error, Result};
 
 /// Hash a device path to a stable 32-bit value for serialization.
+/// Uses a simple FNV-like hash for better performance than DefaultHasher.
+#[inline]
 fn hash_path(path: &str) -> u32 {
-    let mut hasher = DefaultHasher::new();
-    path.hash(&mut hasher);
-    hasher.finish() as u32
+    const FNV_OFFSET_BASIS: u32 = 2166136261; // FNV offset basis
+    const FNV_PRIME: u32 = 16777619; // FNV prime
+
+    let mut hash = FNV_OFFSET_BASIS;
+    for byte in path.bytes() {
+        hash = hash.wrapping_mul(FNV_PRIME);
+        hash ^= byte as u32;
+    }
+    hash
 }
 
 /// Unique identifier for a device.
@@ -222,14 +237,17 @@ impl From<&HashMap<DeviceId, DeviceState>> for SerializableStates {
     }
 }
 
-/// Manager for device state persistence.
+/// Manager for device state persistence with async write-behind caching.
 pub struct DeviceStateStore {
-    states: HashMap<DeviceId, DeviceState>,
+    states: Arc<RwLock<HashMap<DeviceId, DeviceState>>>,
     state_file: PathBuf,
+    dirty_flag: Arc<Mutex<bool>>,
+    last_write_time: Arc<Mutex<Instant>>,
+    write_behind_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl DeviceStateStore {
-    /// Create a new device state store.
+    /// Create a new device state store with async persistence.
     pub fn new() -> Result<Self> {
         let state_file = Config::config_dir()
             .ok_or_else(|| {
@@ -241,104 +259,216 @@ impl DeviceStateStore {
             std::fs::create_dir_all(parent)?;
         }
 
+        let states = Arc::new(RwLock::new(HashMap::new()));
+        let dirty_flag = Arc::new(Mutex::new(false));
+        let last_write_time = Arc::new(Mutex::new(Instant::now()));
+
         let mut store = Self {
-            states: HashMap::new(),
-            state_file,
+            states: Arc::clone(&states),
+            state_file: state_file.clone(),
+            dirty_flag: Arc::clone(&dirty_flag),
+            last_write_time: Arc::clone(&last_write_time),
+            write_behind_handle: None,
         };
 
         // Load existing state if available
         if store.state_file.exists() {
-            store.load()?;
+            store.load_sync()?;
         }
 
+        // Start the write-behind background task
+        let write_handle = Self::start_write_behind_task(
+            states,
+            state_file,
+            dirty_flag,
+            last_write_time,
+        );
+        store.write_behind_handle = Some(write_handle);
+
+        debug!("DeviceStateStore initialized with async persistence");
         Ok(store)
     }
 
-    /// Load device states from disk.
-    fn load(&mut self) -> Result<()> {
+    /// Start background task for write-behind caching with 5-second flush interval.
+    fn start_write_behind_task(
+        states: Arc<RwLock<HashMap<DeviceId, DeviceState>>>,
+        state_file: PathBuf,
+        dirty_flag: Arc<Mutex<bool>>,
+        last_write_time: Arc<Mutex<Instant>>,
+    ) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            let mut interval = interval(Duration::from_secs(5));
+
+            loop {
+                interval.tick().await;
+
+                let should_write = {
+                    let mut dirty = dirty_flag.lock().await;
+                    if *dirty {
+                        *dirty = false;
+                        true
+                    } else {
+                        false
+                    }
+                };
+
+                if should_write {
+                    let result = Self::save_async(&states, &state_file).await;
+
+                    if let Err(e) = result {
+                        error!("Failed to write device state to disk: {}", e);
+                    } else {
+                        let mut last_write = last_write_time.lock().await;
+                        *last_write = Instant::now();
+                        trace!("Device state persisted to disk asynchronously");
+                    }
+                }
+            }
+        })
+    }
+
+    /// Async save operation with atomic write using temp file.
+    async fn save_async(
+        states: &Arc<RwLock<HashMap<DeviceId, DeviceState>>>,
+        state_file: &PathBuf,
+    ) -> Result<()> {
+        let states_guard = states.read().await;
+        let serializable = SerializableStates::from(&*states_guard);
+
+        // Release the lock before I/O operations
+        drop(states_guard);
+
+        let content = serde_json::to_string_pretty(&serializable)
+            .map_err(|e| Error::SerializationError(format!("Failed to serialize state: {}", e)))?;
+
+        // Use atomic write with temp file to prevent corruption
+        let temp_file = state_file.with_extension("tmp");
+
+        // Use blocking file operations in a spawn_blocking task
+        let temp_file_clone = temp_file.clone();
+        let state_file_clone = state_file.clone();
+
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            std::fs::write(&temp_file_clone, content)
+                .map_err(|e| Error::FileSystemError(format!("Failed to write temp file: {}", e)))?;
+
+            std::fs::rename(&temp_file_clone, &state_file_clone)
+                .map_err(|e| Error::FileSystemError(format!("Failed to rename temp file: {}", e)))?;
+
+            Ok(())
+        }).await
+        .map_err(|e| Error::Other(format!("Task join error: {}", e)))??;
+
+        Ok(())
+    }
+
+    /// Load device states from disk synchronously (used during initialization).
+    fn load_sync(&mut self) -> Result<()> {
         let content = std::fs::read_to_string(&self.state_file)?;
 
         // Try new format first (string-keyed map)
-        if let Ok(serializable) = serde_json::from_str::<SerializableStates>(&content) {
+        let loaded_states = if let Ok(serializable) = serde_json::from_str::<SerializableStates>(&content) {
             // Convert back to DeviceId-keyed map
-            self.states = serializable
+            serializable
                 .0
                 .into_iter()
                 .filter_map(|(key, state)| DeviceId::from_key(&key).ok().map(|id| (id, state)))
-                .collect();
-            return Ok(());
-        }
-
-        // Try legacy format (direct HashMap<DeviceId, DeviceState>) for backward compat
-        // This will likely fail on current broken files, which is expected
-        self.states = serde_json::from_str(&content)?;
-        Ok(())
-    }
-
-    /// Save device states to disk.
-    fn save(&self) -> Result<()> {
-        let serializable = SerializableStates::from(&self.states);
-        let content = serde_json::to_string_pretty(&serializable)?;
-        std::fs::write(&self.state_file, content)?;
-        Ok(())
-    }
-
-    /// Get the state for a device.
-    pub fn get(&self, id: &DeviceId) -> Option<&DeviceState> {
-        if let Some(state) = self.states.get(id) {
-            return Some(state);
-        }
-
-        self.states
-            .iter()
-            .find(|(existing, _)| Self::id_loosely_matches(existing, id))
-            .map(|(_, state)| state)
-    }
-
-    /// Get mutable reference to device state.
-    pub fn get_mut(&mut self, id: &DeviceId) -> Option<&mut DeviceState> {
-        // First, determine which key to use (without any mutable borrows)
-        let key = if self.states.contains_key(id) {
-            // Exact match exists
-            Some(id.clone())
+                .collect()
         } else {
-            // Fall back to loose matching
-            self.states
-                .keys()
-                .find(|existing| Self::id_loosely_matches(existing, id))
-                .cloned()
+            // Try legacy format (direct HashMap<DeviceId, DeviceState>) for backward compat
+            // This will likely fail on current broken files, which is expected
+            serde_json::from_str(&content)?
         };
 
-        // Now get mutable reference using the found key
-        key.and_then(|k| self.states.get_mut(&k))
+        // Update the async states
+        *self.states.blocking_write() = loaded_states;
+        debug!("Loaded device states from disk synchronously");
+        Ok(())
+    }
+
+    /// Mark state as dirty for async persistence.
+    /// This is non-blocking and triggers background write-behind.
+    fn mark_dirty(&self) {
+        if let Ok(mut dirty) = self.dirty_flag.try_lock() {
+            *dirty = true;
+        } else {
+            // If lock is contended, spawn async task to set dirty flag
+            let dirty_flag = Arc::clone(&self.dirty_flag);
+            tokio::spawn(async move {
+                let mut dirty = dirty_flag.lock().await;
+                *dirty = true;
+            });
+        }
+    }
+
+    /// Force immediate async save (for shutdown scenarios).
+    pub async fn save(&self) -> Result<()> {
+        Self::save_async(&self.states, &self.state_file).await
+    }
+
+    /// Get the state for a device (blocking version for compatibility).
+    pub fn get(&self, id: &DeviceId) -> Option<DeviceState> {
+        let states = self.states.blocking_read();
+
+        if let Some(state) = states.get(id) {
+            return Some(state.clone());
+        }
+
+        states
+            .iter()
+            .find(|(existing, _)| Self::id_loosely_matches(existing, id))
+            .map(|(_, state)| state.clone())
+    }
+
+    /// Get the state for a device (non-blocking async version).
+    pub async fn get_async(&self, id: &DeviceId) -> Option<DeviceState> {
+        let states = self.states.read().await;
+
+        if let Some(state) = states.get(id) {
+            return Some(state.clone());
+        }
+
+        states
+            .iter()
+            .find(|(existing, _)| Self::id_loosely_matches(existing, id))
+            .map(|(_, state)| state.clone())
     }
 
     /// Get or create device state.
-    pub fn get_or_create(&mut self, id: DeviceId) -> &mut DeviceState {
-        // Check if exact match exists
-        if self.states.contains_key(&id) {
-            // Safe to unwrap as we just checked for the key's existence.
-            return self.states.get_mut(&id).unwrap();
+    pub async fn get_or_create(&self, id: DeviceId) -> DeviceState {
+        let mut states = self.states.write().await;
+
+        // Check if we need to migrate a legacy key first
+        let legacy_key = if !states.contains_key(&id) {
+            // Look for legacy identifiers (pre-path) to retain previously saved state
+            states
+                .keys()
+                .find(|existing| Self::id_loosely_matches(existing, &id))
+                .cloned()
+        } else {
+            None
+        };
+
+        // If we found a legacy key, migrate it to the new key
+        if let Some(key) = legacy_key {
+            if let Some(existing_state) = states.remove(&key) {
+                states.insert(id.clone(), existing_state);
+            }
         }
 
-        // Fall back to legacy identifiers (pre-path) to retain previously saved state
-        let existing_key = self
-            .states
-            .keys()
-            .find(|existing| Self::id_loosely_matches(existing, &id))
-            .cloned();
-
-        if let Some(key) = existing_key {
-            // Safe unwrap: we just found this key exists
-            return self.states.get_mut(&key).unwrap();
-        }
-
-        self.states.entry(id).or_default()
+        // Now safely get or create the state
+        states.entry(id).or_default().clone()
     }
 
-    /// Update keyboard state for a device.
-    pub fn update_keyboard(&mut self, id: DeviceId, keyboard: KeyboardState) -> Result<()> {
-        let state = self.get_or_create(id);
+    /// Update keyboard state for a device (blocking version for compatibility).
+    pub fn update_keyboard(&self, id: DeviceId, keyboard: KeyboardState) -> Result<()> {
+        // Use blocking access for backward compatibility
+        let mut states = self.states.blocking_write();
+
+        // Get or create the device state
+        let state = states.entry(id).or_default();
+
+        // Check if update is needed
         if state
             .keyboard
             .as_ref()
@@ -349,12 +479,44 @@ impl DeviceStateStore {
         }
 
         state.keyboard = Some(keyboard);
-        self.save()
+        drop(states); // Release lock before marking dirty
+
+        // Mark for async persistence
+        self.mark_dirty();
+        Ok(())
     }
 
-    /// Update headset state for a device.
-    pub fn update_headset(&mut self, id: DeviceId, headset: HeadsetState) -> Result<()> {
-        let state = self.get_or_create(id);
+    /// Update keyboard state for a device (non-blocking async version).
+    pub async fn update_keyboard_async(&self, id: DeviceId, keyboard: KeyboardState) -> Result<()> {
+        let mut states = self.states.write().await;
+
+        // Get or create the device state
+        let state = states.entry(id).or_default();
+
+        // Check if update is needed
+        if state
+            .keyboard
+            .as_ref()
+            .map(|existing| keyboard_states_equal(existing, &keyboard))
+            .unwrap_or(false)
+        {
+            return Ok(());
+        }
+
+        state.keyboard = Some(keyboard);
+        drop(states); // Release lock before marking dirty
+
+        // Mark for async persistence
+        self.mark_dirty();
+        Ok(())
+    }
+
+    /// Update headset state for a device (blocking version for compatibility).
+    pub fn update_headset(&self, id: DeviceId, headset: HeadsetState) -> Result<()> {
+        let mut states = self.states.blocking_write();
+
+        let state = states.entry(id).or_default();
+
         if state
             .headset
             .as_ref()
@@ -365,12 +527,40 @@ impl DeviceStateStore {
         }
 
         state.headset = Some(headset);
-        self.save()
+        drop(states);
+
+        self.mark_dirty();
+        Ok(())
     }
 
-    /// Update keyboard effect for a device.
-    pub fn update_keyboard_effect(&mut self, id: DeviceId, effect: Effect) -> Result<()> {
-        let state = self.get_or_create(id);
+    /// Update headset state for a device (non-blocking async version).
+    pub async fn update_headset_async(&self, id: DeviceId, headset: HeadsetState) -> Result<()> {
+        let mut states = self.states.write().await;
+
+        let state = states.entry(id).or_default();
+
+        if state
+            .headset
+            .as_ref()
+            .map(|existing| headset_states_equal(existing, &headset))
+            .unwrap_or(false)
+        {
+            return Ok(());
+        }
+
+        state.headset = Some(headset);
+        drop(states);
+
+        self.mark_dirty();
+        Ok(())
+    }
+
+    /// Update keyboard effect for a device (blocking version for compatibility).
+    pub fn update_keyboard_effect(&self, id: DeviceId, effect: Effect) -> Result<()> {
+        let mut states = self.states.blocking_write();
+
+        let state = states.entry(id).or_default();
+
         if let Some(ref mut keyboard) = state.keyboard {
             if effects_equal(&keyboard.effect, &effect) {
                 return Ok(());
@@ -382,12 +572,41 @@ impl DeviceStateStore {
                 ..Default::default()
             });
         }
-        self.save()
+
+        drop(states);
+        self.mark_dirty();
+        Ok(())
     }
 
-    /// Update keyboard brightness for a device.
-    pub fn update_keyboard_brightness(&mut self, id: DeviceId, brightness: u8) -> Result<()> {
-        let state = self.get_or_create(id);
+    /// Update keyboard effect for a device (non-blocking async version).
+    pub async fn update_keyboard_effect_async(&self, id: DeviceId, effect: Effect) -> Result<()> {
+        let mut states = self.states.write().await;
+
+        let state = states.entry(id).or_default();
+
+        if let Some(ref mut keyboard) = state.keyboard {
+            if effects_equal(&keyboard.effect, &effect) {
+                return Ok(());
+            }
+            keyboard.effect = effect;
+        } else {
+            state.keyboard = Some(KeyboardState {
+                effect,
+                ..Default::default()
+            });
+        }
+
+        drop(states);
+        self.mark_dirty();
+        Ok(())
+    }
+
+    /// Update keyboard brightness for a device (blocking version for compatibility).
+    pub fn update_keyboard_brightness(&self, id: DeviceId, brightness: u8) -> Result<()> {
+        let mut states = self.states.blocking_write();
+
+        let state = states.entry(id).or_default();
+
         if let Some(ref mut keyboard) = state.keyboard {
             if keyboard.brightness == brightness {
                 return Ok(());
@@ -399,12 +618,66 @@ impl DeviceStateStore {
                 ..Default::default()
             });
         }
-        self.save()
+
+        drop(states);
+        self.mark_dirty();
+        Ok(())
     }
 
-    /// List all devices with stored state.
-    pub fn list_devices(&self) -> Vec<&DeviceId> {
-        self.states.keys().collect()
+    /// Update keyboard brightness for a device (non-blocking async version).
+    pub async fn update_keyboard_brightness_async(&self, id: DeviceId, brightness: u8) -> Result<()> {
+        let mut states = self.states.write().await;
+
+        let state = states.entry(id).or_default();
+
+        if let Some(ref mut keyboard) = state.keyboard {
+            if keyboard.brightness == brightness {
+                return Ok(());
+            }
+            keyboard.brightness = brightness;
+        } else {
+            state.keyboard = Some(KeyboardState {
+                brightness,
+                ..Default::default()
+            });
+        }
+
+        drop(states);
+        self.mark_dirty();
+        Ok(())
+    }
+
+    /// List all devices with stored state (blocking version for compatibility).
+    pub fn list_devices(&self) -> Vec<DeviceId> {
+        let states = self.states.blocking_read();
+        states.keys().cloned().collect()
+    }
+
+    /// List all devices with stored state (non-blocking async version).
+    pub async fn list_devices_async(&self) -> Vec<DeviceId> {
+        let states = self.states.read().await;
+        states.keys().cloned().collect()
+    }
+
+    /// Shutdown the store and flush pending writes.
+    pub async fn shutdown(&mut self) -> Result<()> {
+        // Cancel the write-behind task
+        if let Some(handle) = self.write_behind_handle.take() {
+            handle.abort();
+        }
+
+        // Force one final write if there are pending changes
+        let is_dirty = {
+            let dirty = self.dirty_flag.lock().await;
+            *dirty
+        };
+
+        if is_dirty {
+            self.save().await?;
+        }
+
+        debug!("DeviceStateStore shut down successfully");
+        Ok(())
     }
 
     /// Compare device identifiers while tolerating missing path information to keep

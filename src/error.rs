@@ -36,6 +36,14 @@ pub enum Error {
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 
+    /// Serialization error (manual)
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
+
+    /// File system error
+    #[error("File system error: {0}")]
+    FileSystemError(String),
+
     /// TOML parsing error
     #[error("Config parse error: {0}")]
     TomlParse(#[from] toml::de::Error),
@@ -55,6 +63,10 @@ pub enum Error {
     /// Unsupported device
     #[error("Unsupported device: vendor={vendor_id:#06x}, product={product_id:#06x}")]
     UnsupportedDevice { vendor_id: u16, product_id: u16 },
+
+    /// Tracing initialization error
+    #[error("Logging initialization error: {0}")]
+    Tracing(#[from] tracing::subscriber::SetGlobalDefaultError),
 
     /// Generic error
     #[error("{0}")]
