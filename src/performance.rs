@@ -10,7 +10,7 @@
 //! - Background processing
 //! - Smart invalidation strategies
 
-//use crate::devices::key_mapping::KeyId; // TODO: Use when needed
+
 use crate::rgb::{Color, Effect, PerKeyEffect};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};

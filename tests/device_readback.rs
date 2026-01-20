@@ -1,7 +1,8 @@
-// Quick test to check if we can read back from the device
+// Integration test to verify device readback capabilities
 // This helps determine if the device acknowledges RGB commands
 
 use steelseries_gg::devices::{DeviceManager, DeviceType};
+use steelseries_gg::rgb::Color;
 
 fn main() -> anyhow::Result<()> {
     println!("Testing device readback capabilities...\n");
@@ -21,7 +22,6 @@ fn main() -> anyhow::Result<()> {
 
     // Try to send a color command
     println!("Sending RGB red command...");
-    use steelseries_gg::rgb::Color;
     keyboard.set_color(Color::RED)?;
     println!("Command sent successfully");
 
