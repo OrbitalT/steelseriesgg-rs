@@ -1,6 +1,7 @@
 //! Keyboard device support (Apex series).
 
 pub mod apex;
+pub mod apex_pro_tkl_2023;
 
 use super::diagnostics::{HidOperation, with_global_diagnostics};
 use super::hid_reports::{
@@ -136,6 +137,18 @@ pub trait Keyboard: Device {
     ///
     /// Returns actuation point in 0.1mm units (e.g., 4 = 0.4mm, 36 = 3.6mm).
     fn read_actuation_point(&mut self) -> Result<u8>;
+
+    /// Set actuation point for adjustable actuation keyboards (if supported).
+    ///
+    /// Value is in 0.1mm increments (e.g. 4 = 0.4mm, 36 = 3.6mm).
+    /// Returns an error if the keyboard doesn't support adjustable actuation.
+    fn set_actuation_point(&mut self, value: u8) -> Result<()>;
+
+    /// Set actuation point for adjustable actuation keyboards in millimeters (if supported).
+    ///
+    /// Value is in millimeters with precision limited to 0.1mm increments.
+    /// Returns an error if the keyboard doesn't support adjustable actuation.
+    fn set_actuation_point_mm(&mut self, mm: f32) -> Result<()>;
 }
 
 /// Generic SteelSeries keyboard implementation.
@@ -145,6 +158,7 @@ pub struct GenericKeyboard {
     zone_count: usize,
     report_builder: HidReportBuilder,
     key_mapping: Option<KeyMapping>,
+    #[allow(dead_code)]
     key_mapping_db: KeyMappingDatabase,
     zone_fallback: ZoneFallback,
     zone_mapping: Option<ZoneMap>,
@@ -295,7 +309,7 @@ impl Device for GenericKeyboard {
             .map_err(|e| Error::DeviceCommunication(format!("Device lock poisoned: {}", e)))?;
 
         // Record the operation with timing analysis
-        let result = if let Some(result) = with_global_diagnostics(|diag| {
+        if let Some(result) = with_global_diagnostics(|diag| {
             diag.record_timed_operation(HidOperation::Receive, &[], || {
                 let len = device.read(buf)?;
                 Ok((len, buf[..len].to_vec())) // Return both length and data for diagnostics
@@ -306,9 +320,7 @@ impl Device for GenericKeyboard {
             // No diagnostics, do normal operation
             let len = device.read(buf)?;
             Ok(len)
-        };
-
-        result
+        }
     }
 }
 
@@ -824,6 +836,20 @@ impl Keyboard for GenericKeyboard {
         Err(Error::DeviceCommunication(
             "Reading actuation point not yet implemented - HID read command not discovered"
                 .to_string(),
+        ))
+    }
+
+    fn set_actuation_point(&mut self, _value: u8) -> Result<()> {
+        // Placeholder implementation - most keyboards don't support this feature
+        Err(Error::DeviceCommunication(
+            "Setting actuation point not supported on this keyboard model".to_string(),
+        ))
+    }
+
+    fn set_actuation_point_mm(&mut self, _mm: f32) -> Result<()> {
+        // Placeholder implementation - most keyboards don't support this feature
+        Err(Error::DeviceCommunication(
+            "Setting actuation point not supported on this keyboard model".to_string(),
         ))
     }
 }

@@ -14,6 +14,7 @@ use crate::devices::keyboards::Keyboard;
 use crate::devices::{DeviceInfo, DeviceType};
 use crate::rgb::{Color, PerKeyEffect};
 
+use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::fs;
@@ -109,6 +110,7 @@ pub struct MemoryTracker {
     /// Maximum number of samples to keep
     max_samples: usize,
     /// Start time for tracking
+    #[allow(dead_code)]
     start_time: Instant,
     /// Baseline memory usage
     baseline_rss: Option<u64>,
@@ -807,7 +809,7 @@ impl RgbValidator {
         let test_name = "Zone RGB Basic".to_string();
 
         let zone_count = keyboard.zone_count();
-        let test_colors = vec![Color::RED, Color::GREEN, Color::BLUE];
+        let test_colors = [Color::RED, Color::GREEN, Color::BLUE];
 
         for (i, &color) in test_colors.iter().enumerate() {
             match keyboard.set_color(color) {
@@ -1041,7 +1043,7 @@ impl RgbValidator {
         let start = Instant::now();
         let test_name = "RGB System Stress Test".to_string();
 
-        let colors = vec![
+        let colors = [
             Color::RED,
             Color::GREEN,
             Color::BLUE,
@@ -1106,6 +1108,124 @@ impl Default for RgbValidator {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Print test results with colored output.
+pub fn print_test_results(report: &ValidationReport, verbose: bool, use_colors: bool) {
+    println!("Test Results for: {}", report.device_info.name);
+    println!("================================================================================\n");
+
+    // Track statistics
+    let total_tests = report.results.len();
+    let passed_tests = report.results.iter().filter(|r| r.passed).count();
+    let failed_tests = total_tests - passed_tests;
+
+    // Print individual test results
+    for result in &report.results {
+        if verbose || !result.passed {
+            // Format status indicator
+            let status = if result.passed {
+                if use_colors {
+                    "[PASS]".green().to_string()
+                } else {
+                    "[PASS]".to_string()
+                }
+            } else if use_colors {
+                "[FAIL]".red().to_string()
+            } else {
+                "[FAIL]".to_string()
+            };
+
+            // Print test name and duration
+            println!("{} {} ({:.0}ms)", status, result.name, result.duration_ms);
+
+            // Show error message for failures
+            if let Some(ref error) = result.error {
+                println!("       Error: {}", error);
+            }
+
+            // Show notes if present
+            for note in &result.notes {
+                println!("       {}", note);
+            }
+
+            // Show key metrics if present
+            if !result.metrics.is_empty() && verbose {
+                for (key, value) in &result.metrics {
+                    println!("       {}: {:.2}", key, value);
+                }
+            }
+
+            println!();
+        }
+    }
+
+    // Print summary
+    println!("================================================================================");
+    println!("Summary:");
+    println!("  Total tests:  {}", total_tests);
+    println!(
+        "  Passed:       {} {}",
+        passed_tests,
+        if use_colors && passed_tests > 0 {
+            "✓".green().to_string()
+        } else {
+            "✓".to_string()
+        }
+    );
+    println!(
+        "  Failed:       {} {}",
+        failed_tests,
+        if use_colors && failed_tests > 0 {
+            "✗".red().to_string()
+        } else {
+            "✗".to_string()
+        }
+    );
+    println!(
+        "  Duration:     {:.2}s",
+        report.total_duration_ms as f64 / 1000.0
+    );
+
+    // Print health score with color coding
+    let health_display = format!("{:.0}/100", report.health_score);
+    let health_colored = if use_colors {
+        if report.health_score >= 80.0 {
+            health_display.green()
+        } else if report.health_score >= 60.0 {
+            health_display.yellow()
+        } else {
+            health_display.red()
+        }
+    } else {
+        health_display.into()
+    };
+    println!("  Health Score: {}", health_colored);
+
+    println!("\nDevice Capabilities:");
+    println!("  Per-key RGB:  {}", report.capabilities.per_key_rgb);
+    println!("  Zone RGB:     {}", report.capabilities.zone_rgb);
+    println!("  Zone count:   {}", report.capabilities.zone_count);
+    println!(
+        "  Reliability:  {:.1}%",
+        report.capabilities.communication_reliability
+    );
+
+    println!("\nPerformance Metrics:");
+    println!(
+        "  Effect compute: {:.2}ms",
+        report.performance.avg_effect_compute_ms
+    );
+    println!(
+        "  HID comms:      {:.2}ms",
+        report.performance.avg_hid_communication_ms
+    );
+    println!(
+        "  Refresh rate:   {:.1} Hz",
+        report.performance.effective_refresh_rate
+    );
+
+    println!();
 }
 
 /// Helper functions for validation testing.

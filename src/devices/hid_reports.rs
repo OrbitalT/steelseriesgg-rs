@@ -37,6 +37,9 @@ pub enum CommandCode {
     /// NOTE: This command code is a placeholder. The actual per-key RGB command
     /// for SteelSeries keyboards has not been discovered and may be different.
     PerKeyRgb = 0x2A,
+    /// Actuation point control (0x2D) - EXPERIMENTAL
+    /// NOTE: This command code is experimental based on hardware research.
+    ActuationControl = 0x2D,
 }
 
 impl fmt::Display for CommandCode {
@@ -48,6 +51,7 @@ impl fmt::Display for CommandCode {
             CommandCode::ReactiveMode => write!(f, "REACTIVE"),
             CommandCode::ColorShift => write!(f, "COLOR_SHIFT"),
             CommandCode::PerKeyRgb => write!(f, "PERKEY_RGB"),
+            CommandCode::ActuationControl => write!(f, "ACTUATION_CTRL"),
         }
     }
 }
@@ -289,6 +293,79 @@ impl HidCommand for ApplyCommand {
     }
 }
 
+/// Actuation point control command for adjustable actuation keyboards.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActuationCommand {
+    /// Actuation point in 0.1mm increments (e.g. 4 = 0.4mm, 36 = 3.6mm)
+    pub actuation_point: u8,
+}
+
+impl ActuationCommand {
+    /// Create a new actuation command with the specified actuation point.
+    /// Value is in 0.1mm increments (e.g. 4 = 0.4mm, 36 = 3.6mm).
+    pub fn new(actuation_point: u8) -> Self {
+        Self { actuation_point }
+    }
+
+    /// Create a new actuation command from millimeters.
+    /// Precision is limited to 0.1mm increments.
+    pub fn from_mm(mm: f32) -> Self {
+        let tenths_of_mm = (mm * 10.0).round() as u8;
+        Self {
+            actuation_point: tenths_of_mm.min(40), // Clamp to max 4.0mm
+        }
+    }
+
+    /// Convert to millimeters
+    pub fn to_mm(&self) -> f32 {
+        self.actuation_point as f32 / 10.0
+    }
+}
+
+impl HidCommand for ActuationCommand {
+    fn command_code(&self) -> CommandCode {
+        CommandCode::ActuationControl
+    }
+
+    fn serialize(&self, device_type: HidDeviceType) -> Result<Vec<u8>> {
+        self.validate()?;
+
+        let report_size = device_type.report_size();
+        let mut data = vec![0u8; report_size];
+        let mut offset = 0;
+
+        // Add report ID for keyboards
+        if device_type.includes_report_id() {
+            data[0] = 0x00; // Report ID
+            offset = 1;
+        }
+
+        // Command code
+        data[offset] = self.command_code() as u8;
+        offset += 1;
+
+        // Actuation point value
+        data[offset] = self.actuation_point;
+
+        Ok(data)
+    }
+
+    fn validate(&self) -> Result<()> {
+        // Validate range (0.1mm - 4.0mm in 0.1mm increments)
+        if self.actuation_point == 0 || self.actuation_point > 40 {
+            return Err(Error::DeviceCommunication(format!(
+                "Actuation point must be between 1 (0.1mm) and 40 (4.0mm), got {}",
+                self.actuation_point
+            )));
+        }
+        Ok(())
+    }
+
+    fn description(&self) -> String {
+        format!("Set actuation point to {:.1}mm", self.to_mm())
+    }
+}
+
 /// Per-key RGB command for individual key targeting.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PerKeyRgbCommand {
@@ -296,6 +373,10 @@ pub struct PerKeyRgbCommand {
     pub key_colors: HashMap<KeyAddress, Color>,
     /// Addressing mode
     pub addressing_mode: PerKeyAddressingMode,
+    /// Batch operation identifier (for complex multi-report operations)
+    pub batch_id: Option<u32>,
+    /// Fragment position (for split operations across multiple reports)
+    pub fragment: Option<(u8, u8)>, // (current_fragment, total_fragments)
 }
 
 /// Addressing mode for per-key RGB commands.
@@ -308,14 +389,66 @@ pub enum PerKeyAddressingMode {
 }
 
 impl PerKeyRgbCommand {
-    /// Create a new per-key RGB command.
+    /// Maximum keys per report to fit within 64-byte payload limit
+    pub const MAX_KEYS_PER_REPORT: usize = 12; // (64 - header) / 5 bytes per key ≈ 12
+
+    /// Maximum matrix dimensions
+    pub const MAX_ROWS: u8 = 32;
+    pub const MAX_COLS: u8 = 32;
+
+    /// Create a new per-key RGB command with default settings.
     pub fn new(addressing_mode: PerKeyAddressingMode) -> Self {
         Self {
             key_colors: HashMap::new(),
             addressing_mode,
+            batch_id: None,
+            fragment: None,
         }
     }
 
+    /// Create a new per-key RGB command with batch ID for complex operations.
+    pub fn new_with_batch(addressing_mode: PerKeyAddressingMode, batch_id: u32) -> Self {
+        Self {
+            key_colors: HashMap::new(),
+            addressing_mode,
+            batch_id: Some(batch_id),
+            fragment: None,
+        }
+    }
+
+    /// Check if this command needs fragmentation due to size limits.
+    pub fn needs_fragmentation(&self) -> bool {
+        self.key_colors.len() > Self::MAX_KEYS_PER_REPORT
+    }
+
+    /// Split this command into fragments that fit within report size limits.
+    pub fn fragment_into_reports(&self) -> Vec<PerKeyRgbCommand> {
+        let mut fragments = Vec::new();
+        let chunk_size = Self::MAX_KEYS_PER_REPORT;
+        let keys: Vec<_> = self.key_colors.iter().collect();
+
+        for (i, chunk) in keys.chunks(chunk_size).enumerate() {
+            let mut fragment_command = PerKeyRgbCommand {
+                key_colors: HashMap::new(),
+                addressing_mode: self.addressing_mode,
+                batch_id: self.batch_id,
+                fragment: Some(((i + 1) as u8, keys.len().div_ceil(chunk_size) as u8)),
+            };
+
+            for (address, color) in chunk {
+                fragment_command.key_colors.insert(**address, **color);
+            }
+
+            fragments.push(fragment_command);
+        }
+
+        fragments
+    }
+}
+
+impl PerKeyRgbCommand {
+    /// Create a new per-key RGB command.
+    /// Note: Duplicate `new` removed, consolidated into the main implementation block.
     /// Create a command for a single key.
     pub fn single_key(address: KeyAddress, color: Color) -> Self {
         let mut command = Self::new(PerKeyAddressingMode::Matrix);
@@ -401,6 +534,30 @@ impl HidCommand for PerKeyRgbCommand {
         data[offset] = self.addressing_mode as u8;
         offset += 1;
 
+        // Batch ID flag (bit 7 of addressing mode) and fragment info
+        let mut flags = 0u8;
+        if self.batch_id.is_some() {
+            flags |= 0x80; // MSB indicates batch operation
+        }
+        if self.fragment.is_some() {
+            flags |= 0x40; // Bit 6 indicates fragmentation
+        }
+        data[offset] = flags;
+        offset += 1;
+
+        // Batch ID (if present) - next 4 bytes
+        if let Some(batch_id) = self.batch_id {
+            data[offset..offset + 4].copy_from_slice(&batch_id.to_le_bytes());
+            offset += 4;
+        }
+
+        // Fragment info (if present) - next 2 bytes
+        if let Some((current, total)) = self.fragment {
+            data[offset] = current;
+            data[offset + 1] = total;
+            offset += 2;
+        }
+
         // Key count (for parsing/validation)
         data[offset] = self.key_colors.len().min(255) as u8;
         offset += 1;
@@ -436,24 +593,36 @@ impl HidCommand for PerKeyRgbCommand {
     }
 
     fn validate(&self) -> Result<()> {
-        if self.key_colors.is_empty() {
+        if self.key_colors.is_empty() && !self.needs_fragmentation() {
             return Err(Error::DeviceCommunication(
-                "Per-key RGB command must have at least one key".to_string(),
+                "Per-key RGB command must have at least one key (unless fragmented)".to_string(),
             ));
         }
 
         // Validate matrix addressing bounds
         for address in self.key_colors.keys() {
-            if address.row >= 32 || address.col >= 32 {
+            if address.row >= Self::MAX_ROWS || address.col >= Self::MAX_COLS {
                 return Err(Error::DeviceCommunication(format!(
-                    "Key address ({}, {}) exceeds maximum matrix size (32x32)",
-                    address.row, address.col
+                    "Key address ({}, {}) exceeds maximum matrix size ({}x{})",
+                    address.row,
+                    address.col,
+                    Self::MAX_ROWS,
+                    Self::MAX_COLS
                 )));
             }
         }
 
-        // Check if command fits in HID report
-        let required_bytes = 4 + (self.key_colors.len() * 5); // Header + key data
+        // Check if command fits in HID report, accounting for extended fields
+        let mut required_bytes = 6; // Base header (cmd, addr_mode, flags)
+        if self.batch_id.is_some() {
+            required_bytes += 4; // Batch ID
+        }
+        if self.fragment.is_some() {
+            required_bytes += 2; // Fragment info
+        }
+        required_bytes += 1; // Key count
+        required_bytes += self.key_colors.len() * 5; // Key data
+
         if required_bytes > 64 {
             // Max data size (excluding report ID)
             return Err(Error::DeviceCommunication(format!(
@@ -467,14 +636,24 @@ impl HidCommand for PerKeyRgbCommand {
     }
 
     fn description(&self) -> String {
-        match self.addressing_mode {
+        let mut desc = match self.addressing_mode {
             PerKeyAddressingMode::Matrix => {
                 format!("Set {} keys via matrix addressing", self.key_colors.len())
             }
             PerKeyAddressingMode::Logical => {
                 format!("Set {} keys via logical addressing", self.key_colors.len())
             }
+        };
+
+        if let Some(batch_id) = self.batch_id {
+            desc.push_str(&format!(" (batch {})", batch_id));
         }
+
+        if let Some((current, total)) = self.fragment {
+            desc.push_str(&format!(" [fragment {}/{}]", current, total));
+        }
+
+        desc
     }
 }
 
@@ -484,6 +663,8 @@ pub struct PerKeyRgbBuilder {
     addressing_mode: PerKeyAddressingMode,
     key_colors: HashMap<KeyAddress, Color>,
     key_mapping: Option<KeyMapping>,
+    batch_id: Option<u32>,
+    fragment_info: Option<(u8, u8)>, // (current, total)
 }
 
 impl PerKeyRgbBuilder {
@@ -493,6 +674,19 @@ impl PerKeyRgbBuilder {
             addressing_mode,
             key_colors: HashMap::new(),
             key_mapping: None,
+            batch_id: None,
+            fragment_info: None,
+        }
+    }
+
+    /// Create a new per-key RGB builder with batch ID.
+    pub fn new_with_batch(addressing_mode: PerKeyAddressingMode, batch_id: u32) -> Self {
+        Self {
+            addressing_mode,
+            key_colors: HashMap::new(),
+            key_mapping: None,
+            batch_id: Some(batch_id),
+            fragment_info: None,
         }
     }
 
@@ -502,6 +696,19 @@ impl PerKeyRgbBuilder {
             addressing_mode: PerKeyAddressingMode::Logical,
             key_colors: HashMap::new(),
             key_mapping: Some(key_mapping),
+            batch_id: None,
+            fragment_info: None,
+        }
+    }
+
+    /// Create a builder with logical addressing and batch ID.
+    pub fn with_key_mapping_and_batch(key_mapping: KeyMapping, batch_id: u32) -> Self {
+        Self {
+            addressing_mode: PerKeyAddressingMode::Logical,
+            key_colors: HashMap::new(),
+            key_mapping: Some(key_mapping),
+            batch_id: Some(batch_id),
+            fragment_info: None,
         }
     }
 
@@ -584,10 +791,11 @@ impl PerKeyRgbBuilder {
 
     /// Build the final per-key RGB command.
     pub fn build(self) -> PerKeyRgbCommand {
-        PerKeyRgbCommand {
-            key_colors: self.key_colors,
-            addressing_mode: self.addressing_mode,
-        }
+        let mut command = PerKeyRgbCommand::new(self.addressing_mode);
+        command.key_colors = self.key_colors;
+        command.batch_id = self.batch_id;
+        command.fragment = self.fragment_info;
+        command
     }
 
     /// Get the current number of keys in the builder.
@@ -657,7 +865,7 @@ impl HidReportBuilder {
         if data.len() > cmd_offset {
             let cmd_byte = data[cmd_offset];
             match cmd_byte {
-                0x09 | 0x21 | 0x22 | 0x25 | 0x26 | 0x2A => {} // Known commands
+                0x09 | 0x21 | 0x22 | 0x25 | 0x26 | 0x2A | 0x2D => {} // Known commands
                 _ => tracing::warn!("Unknown command byte: 0x{:02x}", cmd_byte),
             }
         }
@@ -684,6 +892,7 @@ impl HidReportBuilder {
             0x25 => Some(CommandCode::ReactiveMode),
             0x26 => Some(CommandCode::ColorShift),
             0x2A => Some(CommandCode::PerKeyRgb),
+            0x2D => Some(CommandCode::ActuationControl),
             _ => None,
         }
     }
@@ -1357,12 +1566,13 @@ mod tests {
         assert_eq!(data[0], 0x00); // Report ID
         assert_eq!(data[1], 0x2A); // Per-key RGB command
         assert_eq!(data[2], 0x00); // Matrix addressing mode
-        assert_eq!(data[3], 0x01); // Key count
-        assert_eq!(data[4], 3); // Row
-        assert_eq!(data[5], 1); // Col
-        assert_eq!(data[6], 255); // Red
-        assert_eq!(data[7], 0); // Green
-        assert_eq!(data[8], 0); // Blue
+        assert_eq!(data[3], 0x00); // Flags
+        assert_eq!(data[4], 0x01); // Key count
+        assert_eq!(data[5], 3); // Row
+        assert_eq!(data[6], 1); // Col
+        assert_eq!(data[7], 255); // Red
+        assert_eq!(data[8], 0); // Green
+        assert_eq!(data[9], 0); // Blue
     }
 
     #[test]
@@ -1537,5 +1747,78 @@ mod tests {
         assert!(recovery.health().is_healthy());
         assert_eq!(recovery.health().consecutive_failures, 0);
         assert!(recovery.should_attempt_recovery());
+    }
+
+    #[test]
+    fn test_actuation_command_creation() {
+        // Test creation from value
+        let cmd = ActuationCommand::new(4);
+        assert_eq!(cmd.actuation_point, 4);
+        assert_eq!(cmd.to_mm(), 0.4);
+
+        // Test creation from mm
+        let cmd = ActuationCommand::from_mm(0.4);
+        assert_eq!(cmd.actuation_point, 4);
+        assert_eq!(cmd.to_mm(), 0.4);
+
+        // Test creation with rounding
+        let cmd = ActuationCommand::from_mm(0.37);
+        assert_eq!(cmd.actuation_point, 4); // Rounded to nearest 0.1mm
+
+        // Test clamping
+        let cmd = ActuationCommand::from_mm(5.0);
+        assert_eq!(cmd.actuation_point, 40); // Clamped to max 4.0mm (40 in 0.1mm units)
+    }
+
+    #[test]
+    fn test_actuation_command_validation() {
+        // Valid values
+        let cmd = ActuationCommand::new(1);
+        assert!(cmd.validate().is_ok());
+
+        let cmd = ActuationCommand::new(40);
+        assert!(cmd.validate().is_ok());
+
+        // Invalid: zero
+        let cmd = ActuationCommand::new(0);
+        assert!(cmd.validate().is_err());
+
+        // Invalid: too high
+        let cmd = ActuationCommand::new(41);
+        assert!(cmd.validate().is_err());
+    }
+
+    #[test]
+    fn test_actuation_command_serialization() {
+        let builder = HidReportBuilder::new(HidDeviceType::Keyboard);
+
+        // Test valid command serialization
+        let cmd = ActuationCommand::new(20);
+        let data = builder.build_report(cmd).unwrap();
+
+        assert_eq!(data.len(), KEYBOARD_REPORT_SIZE);
+        assert_eq!(data[0], 0x00); // Report ID
+        assert_eq!(data[1], 0x2D); // Actuation command
+        assert_eq!(data[2], 20); // Actuation value
+
+        // Test headset serialization
+        let builder = HidReportBuilder::new(HidDeviceType::Headset);
+        let cmd = ActuationCommand::new(15);
+        let data = builder.build_report(cmd).unwrap();
+        assert_eq!(data.len(), HEADSET_REPORT_SIZE);
+        assert_eq!(data[0], 0x2D); // Actuation command (no report ID)
+        assert_eq!(data[1], 15); // Actuation value
+    }
+
+    #[test]
+    fn test_actuation_command_parsing() {
+        let builder = HidReportBuilder::new(HidDeviceType::Keyboard);
+
+        // Test parsing actuation command from data
+        let actuation_data = vec![0x00, 0x2D, 25, 0, 0]; // Actuation command
+        assert_eq!(
+            builder.parse_command_code(&actuation_data),
+            Some(CommandCode::ActuationControl)
+        );
     }
 }

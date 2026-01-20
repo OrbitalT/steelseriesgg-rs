@@ -8,7 +8,10 @@ use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, info, warn};
 
 use super::hid_reports::ConnectionHealth;
+use super::keyboards::apex::Apex3Tkl;
+use super::keyboards::apex_pro_tkl_2023::ApexProTkl2023;
 use super::keyboards::{GenericKeyboard, Keyboard};
+use super::product_ids::{APEX_3_TKL, APEX_PRO_TKL_2023};
 use super::{DeviceInfo, DeviceType, device_name_from_product_id, device_type_from_product_id};
 use crate::{Error, Result, STEELSERIES_VENDOR_ID};
 
@@ -141,6 +144,7 @@ pub struct DeviceManager {
     /// Hot-plug event callback
     hotplug_callback: Option<Arc<HotPlugCallback>>,
     /// Rate limiting for hot-plug events
+    #[allow(dead_code)]
     last_event_time: Option<Instant>,
     /// Event debounce tracking
     pending_events: Arc<RwLock<HashMap<DeviceFingerprint, Instant>>>,
@@ -318,7 +322,13 @@ impl DeviceManager {
 
         let hid_device = self.open_device(info)?;
         let generic_keyboard = GenericKeyboard::new(info.clone(), hid_device);
-        Ok(Box::new(generic_keyboard))
+
+        // Wrap in specific implementation if available
+        match info.product_id {
+            APEX_3_TKL => Ok(Box::new(Apex3Tkl::new(generic_keyboard))),
+            APEX_PRO_TKL_2023 => Ok(Box::new(ApexProTkl2023::new(generic_keyboard))),
+            _ => Ok(Box::new(generic_keyboard)),
+        }
     }
 
     // === Hot-plug monitoring methods ===
@@ -638,15 +648,12 @@ pub fn print_device_summary(manager: &DeviceManager) {
             device.product_id,
             device.serial_number.clone(),
         );
-        grouped
-            .entry(key)
-            .or_insert_with(Vec::new)
-            .push(device.clone());
+        grouped.entry(key).or_default().push(device.clone());
     }
 
     // Convert to sorted vec with pre-allocated capacity
     let mut device_groups: Vec<_> = Vec::with_capacity(grouped.len());
-    device_groups.extend(grouped.into_iter());
+    device_groups.extend(grouped);
 
     // Optimize sorting by sorting in-place with a single comparison
     device_groups.sort_unstable_by(|a, b| {

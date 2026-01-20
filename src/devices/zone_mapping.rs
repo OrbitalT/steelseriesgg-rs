@@ -281,6 +281,7 @@ pub struct ZoneFallback {
     /// Available zone mappings
     mappings: HashMap<u16, ZoneMapping>,
     /// Fallback retry configuration
+    #[allow(dead_code)]
     max_retries: usize,
     /// Current effect being rendered
     current_effect: Option<ZoneEffect>,

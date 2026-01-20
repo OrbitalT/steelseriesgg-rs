@@ -537,6 +537,7 @@ struct EffectCacheKey {
 struct EffectCacheEntry {
     colors: Vec<Color>,
     timestamp: Instant,
+    #[allow(dead_code)]
     computation_time: Duration,
     access_count: u32,
 }
@@ -699,7 +700,8 @@ struct HidOperation {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum HidOpType {
+#[allow(dead_code)]
+pub enum HidOpType {
     SetZoneColors,
     SetPerKeyColors,
     SetBrightness,

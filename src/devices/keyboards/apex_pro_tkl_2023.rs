@@ -1,89 +1,62 @@
-//! Apex keyboard specific implementations.
+//! Apex Pro TKL 2023 specific implementations.
 
 use super::{GenericKeyboard, Keyboard};
 use crate::Result;
+use crate::devices::hid_reports::{ActuationCommand, HidCommand, HidDeviceType, HidReportBuilder};
 use crate::devices::key_mapping::{KeyAddress, KeyId, KeyMapping};
 use crate::devices::zone_mapping::{ZoneEffect, ZoneMapping};
 use crate::devices::{Device, DeviceInfo, DeviceType};
 use crate::rgb::{Color, PerKeyEffect};
+use std::ops::{Deref, DerefMut};
 
-/// Apex 3 TKL specific implementation.
-pub struct Apex3Tkl {
+/// Apex Pro TKL 2023 implementation.
+pub struct ApexProTkl2023 {
     inner: GenericKeyboard,
 }
 
-impl Apex3Tkl {
-    /// Zone count for Apex 3 TKL (10-zone RGB).
-    pub const ZONE_COUNT: usize = 9;
-
-    /// Product ID for Apex 3 TKL.
-    pub const PRODUCT_ID: u16 = 0x1622;
-
-    /// HID command: RGB effect control
-    pub const CMD_RGB_EFFECT: u8 = 0x23;
-
-    /// HID command: OSD navigation
-    pub const CMD_OSD_NAV: u8 = 0x24;
+impl ApexProTkl2023 {
+    /// Product ID for Apex Pro TKL 2023.
+    pub const PRODUCT_ID: u16 = 0x1628;
 
     /// Create from a generic keyboard.
     pub fn new(keyboard: GenericKeyboard) -> Self {
         Self { inner: keyboard }
     }
 
-    /// Set reactive lighting mode.
-    pub fn set_reactive_mode(&mut self, enabled: bool) -> Result<()> {
-        let data = if enabled {
-            [0x25, 0x01] // Enable reactive
-        } else {
-            [0x25, 0x00] // Disable reactive
-        };
-        self.inner.send_raw(&data)
+    /// Set actuation point for all keys (global).
+    /// Value is in 0.1mm increments (e.g. 4 = 0.4mm, 36 = 3.6mm).
+    pub fn set_actuation_point(&mut self, value: u8) -> Result<()> {
+        // Create ActuationCommand and validate it
+        let command = ActuationCommand::new(value);
+        command.validate()?;
+
+        // Use the new command infrastructure for consistent serialization
+        let report_builder = HidReportBuilder::new(HidDeviceType::Keyboard);
+
+        let report = report_builder.build_report(command)?;
+
+        // Use send_raw from inner Device trait
+        self.inner.send_raw(&report)
     }
 
-    /// Set color shift effect.
-    pub fn set_color_shift(&mut self, color1: Color, color2: Color, speed: u8) -> Result<()> {
-        let data = [
-            0x26, // Color shift command
-            color1.r,
-            color1.g,
-            color1.b,
-            color2.r,
-            color2.g,
-            color2.b,
-            speed.min(100),
-        ];
-        self.inner.send_raw(&data)
-    }
+    /// Set actuation point in millimeters.
+    /// Precision is limited to 0.1mm increments.
+    pub fn set_actuation_point_mm(&mut self, mm: f32) -> Result<()> {
+        let command = ActuationCommand::from_mm(mm);
+        command.validate()?;
 
-    /// Experimental: RGB effect control - hardware behavior not fully verified.
-    #[doc = "Experimental: Hardware behavior not fully verified"]
-    pub fn set_rgb_effect(&mut self, effect_id: u8, params: &[u8]) -> Result<()> {
-        let mut data = vec![0u8; 65];
-        data[0] = 0x00; // Report ID
-        data[1] = Self::CMD_RGB_EFFECT;
-        data[2] = effect_id;
+        // Use the new command infrastructure for consistent serialization
+        let report_builder = HidReportBuilder::new(HidDeviceType::Keyboard);
 
-        // Copy parameters into the report
-        for (i, &param) in params.iter().enumerate() {
-            if i + 3 >= 65 {
-                break; // Prevent buffer overflow
-            }
-            data[i + 3] = param;
-        }
+        let report = report_builder.build_report(command)?;
 
-        self.inner.send_raw(&data)
-    }
-
-    /// Experimental: OSD navigation command - hardware behavior not fully verified.
-    #[doc = "Experimental: Hardware behavior not fully verified"]
-    pub fn send_osd_command(&mut self, command: u8) -> Result<()> {
-        let data = [0x00, Self::CMD_OSD_NAV, command];
-        self.inner.send_raw(&data)
+        // Use send_raw from inner Device trait
+        self.inner.send_raw(&report)
     }
 }
 
 // Delegate Device trait
-impl Device for Apex3Tkl {
+impl Device for ApexProTkl2023 {
     fn info(&self) -> &DeviceInfo {
         self.inner.info()
     }
@@ -114,7 +87,7 @@ impl Device for Apex3Tkl {
 }
 
 // Delegate Keyboard trait
-impl Keyboard for Apex3Tkl {
+impl Keyboard for ApexProTkl2023 {
     fn set_color(&mut self, color: Color) -> Result<()> {
         self.inner.set_color(color)
     }
@@ -236,19 +209,21 @@ impl Keyboard for Apex3Tkl {
     }
 
     fn read_actuation_point(&mut self) -> Result<u8> {
+        // Implement read if command known, otherwise delegate to inner which returns error
         self.inner.read_actuation_point()
     }
 
     fn set_actuation_point(&mut self, value: u8) -> Result<()> {
-        self.inner.set_actuation_point(value)
+        self.set_actuation_point(value)
     }
 
     fn set_actuation_point_mm(&mut self, mm: f32) -> Result<()> {
-        self.inner.set_actuation_point_mm(mm)
+        self.set_actuation_point_mm(mm)
     }
 }
 
-impl std::ops::Deref for Apex3Tkl {
+// Deref allows access to Device trait methods like send_raw/receive_raw
+impl Deref for ApexProTkl2023 {
     type Target = GenericKeyboard;
 
     fn deref(&self) -> &Self::Target {
@@ -256,48 +231,8 @@ impl std::ops::Deref for Apex3Tkl {
     }
 }
 
-impl std::ops::DerefMut for Apex3Tkl {
+impl DerefMut for ApexProTkl2023 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
-    }
-}
-
-/// Zone mapping for Apex keyboards.
-#[derive(Clone, Copy, Debug)]
-pub enum ApexZone {
-    /// Left side of keyboard
-    Left = 0,
-    /// Left-center area
-    LeftCenter = 1,
-    /// Center area
-    Center = 2,
-    /// Right-center area
-    RightCenter = 3,
-    /// Right side of keyboard
-    Right = 4,
-    /// Function row
-    FunctionRow = 5,
-    /// Number row
-    NumberRow = 6,
-    /// WASD cluster
-    Wasd = 7,
-    /// Arrow keys
-    ArrowKeys = 8,
-}
-
-impl ApexZone {
-    /// Get all zones.
-    pub fn all() -> &'static [ApexZone] {
-        &[
-            ApexZone::Left,
-            ApexZone::LeftCenter,
-            ApexZone::Center,
-            ApexZone::RightCenter,
-            ApexZone::Right,
-            ApexZone::FunctionRow,
-            ApexZone::NumberRow,
-            ApexZone::Wasd,
-            ApexZone::ArrowKeys,
-        ]
     }
 }

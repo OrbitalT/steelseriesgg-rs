@@ -89,7 +89,7 @@ impl HidDiagnostics {
             .write(true)
             .truncate(true)
             .open(&filepath)
-            .map_err(|e| Error::Io(e))?;
+            .map_err(Error::Io)?;
 
         debug!("HID diagnostics logging to: {:?}", filepath);
 
@@ -104,7 +104,7 @@ impl HidDiagnostics {
                 file,
                 "# Format: [timestamp] [operation] [duration_ms] [success] [size] [data_hex] [error]"
             )?;
-            writeln!(file, "")?;
+            writeln!(file)?;
             file.flush()?;
         }
 
@@ -360,14 +360,12 @@ fn average_duration(durations: &[Duration]) -> Duration {
 }
 
 /// Global diagnostic instance for easy access.
-static mut GLOBAL_DIAGNOSTICS: Option<HidDiagnostics> = None;
-static DIAGNOSTICS_INIT: std::sync::Once = std::sync::Once::new();
+static GLOBAL_DIAGNOSTICS: std::sync::OnceLock<std::sync::Mutex<HidDiagnostics>> =
+    std::sync::OnceLock::new();
 
 /// Initialize global diagnostics.
 pub fn init_global_diagnostics(enabled: bool) -> Result<()> {
-    DIAGNOSTICS_INIT.call_once(|| unsafe {
-        GLOBAL_DIAGNOSTICS = Some(HidDiagnostics::new(enabled));
-    });
+    GLOBAL_DIAGNOSTICS.get_or_init(|| std::sync::Mutex::new(HidDiagnostics::new(enabled)));
 
     if enabled {
         with_global_diagnostics(|diag| diag.enable_file_logging())
@@ -382,5 +380,8 @@ pub fn with_global_diagnostics<F, R>(func: F) -> Option<R>
 where
     F: FnOnce(&mut HidDiagnostics) -> R,
 {
-    unsafe { GLOBAL_DIAGNOSTICS.as_mut().map(func) }
+    GLOBAL_DIAGNOSTICS
+        .get()
+        .and_then(|mutex| mutex.lock().ok())
+        .map(|mut diag| func(&mut diag))
 }

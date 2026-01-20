@@ -1,9 +1,14 @@
 //! SteelSeries Sonar API client (GGSonarRev integration).
 //!
 //! Provides control over the SteelSeries Sonar audio device through the
-//! reverse-engineered HTTP API. Based on https://github.com/PrzemekkkYT/GGSonarRev
+//! reverse-engineered HTTP API. Based on:
+//! - https://github.com/wex/sonar-rev
+//! - https://github.com/PrzemekkkYT/GGSonarRev
+//!
+//! See `docs/development/SONAR_PROTOCOL.md` for complete API documentation.
 
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::{Error, Result};
@@ -85,16 +90,38 @@ pub struct StreamRedirection {
     pub aux: bool,
 }
 
+/// Sonar audio channel identifier
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SonarChannel {
+    Master,
+    Game,
+    Chat,
+    Media,
+    Aux,
+    ChatCapture,
+}
+
+impl SonarChannel {
+    /// Get the string identifier used in Sonar API endpoints
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SonarChannel::Master => "master",
+            SonarChannel::Game => "game",
+            SonarChannel::Chat => "chat",
+            SonarChannel::Media => "media",
+            SonarChannel::Aux => "aux",
+            SonarChannel::ChatCapture => "chatCapture",
+        }
+    }
+}
+
 impl SonarClient {
     /// Create a new Sonar client by discovering the dynamic port.
     pub async fn new() -> Result<Self> {
         let port = Self::discover_port().await?;
         let base_url = format!("http://127.0.0.1:{}", port);
 
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(5))
-            .build()
-            .map_err(|e| Error::Audio(format!("Failed to create HTTP client: {}", e)))?;
+        let client = Self::create_http_client()?;
 
         Ok(Self { base_url, client })
     }
@@ -102,25 +129,154 @@ impl SonarClient {
     /// Create a Sonar client with a specific port (for testing or manual override).
     pub fn with_port(port: u16) -> Result<Self> {
         let base_url = format!("http://127.0.0.1:{}", port);
+        let client = Self::create_http_client()?;
 
+        Ok(Self { base_url, client })
+    }
+
+    /// Create HTTP client configured for Sonar API.
+    ///
+    /// The Sonar API uses HTTPS with self-signed certificates that are regenerated
+    /// on each restart. This client is configured to accept these certificates while
+    /// still maintaining local-only communication security.
+    fn create_http_client() -> Result<reqwest::Client> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(5))
+            .danger_accept_invalid_certs(true) // Sonar uses self-signed certificates
             .build()
             .map_err(|e| Error::Audio(format!("Failed to create HTTP client: {}", e)))?;
 
-        Ok(Self { base_url, client })
+        tracing::warn!(
+            "Sonar HTTP client accepts self-signed certificates (Sonar regenerates certs on restart)"
+        );
+
+        Ok(client)
     }
 
     /// Discover the dynamic Sonar port.
     ///
     /// The Sonar API runs on a different port after each restart. This method
-    /// queries the configuration endpoint to find the current port.
+    /// uses a fallback chain to find the current port:
+    /// 1. Environment variable STEELSERIES_SONAR_PORT
+    /// 2. coreProps.json file (Windows/Linux)
+    /// 3. HTTP API query to GG core service
+    /// 4. Port scanning common Sonar ports
     async fn discover_port() -> Result<u16> {
+        // Priority 1: Environment variable override
+        if let Ok(port_str) = std::env::var("STEELSERIES_SONAR_PORT") {
+            if let Ok(port) = port_str.parse::<u16>() {
+                tracing::debug!("Using Sonar port from STEELSERIES_SONAR_PORT: {}", port);
+                return Ok(port);
+            }
+        }
+
+        // Priority 2: Try coreProps.json file discovery
+        if let Ok(port) = Self::discover_port_from_config_file() {
+            tracing::debug!("Discovered Sonar port from coreProps.json: {}", port);
+            return Ok(port);
+        }
+
+        // Priority 3: HTTP API query to GG core service
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(5))
             .build()
             .map_err(|e| Error::Audio(format!("Failed to create HTTP client: {}", e)))?;
 
+        if let Ok(port) = Self::discover_port_from_http_api(&client).await {
+            tracing::debug!("Discovered Sonar port from HTTP API: {}", port);
+            return Ok(port);
+        }
+
+        // Priority 4: Port scanning fallback
+        tracing::debug!("Falling back to port scanning");
+        for port in [37330, 37331, 37332, 37333, 37334, 37335] {
+            if Self::test_port(&client, port).await {
+                tracing::debug!("Found Sonar on port {} via scanning", port);
+                return Ok(port);
+            }
+        }
+
+        Err(Error::Audio(
+            "Could not discover Sonar port. Is SteelSeries Sonar running?".to_string(),
+        ))
+    }
+
+    /// Discover Sonar port from coreProps.json configuration file.
+    ///
+    /// Searches for coreProps.json in platform-specific locations:
+    /// - Linux: ~/.config/SteelSeries/GG/coreProps.json
+    /// - Windows: C:\ProgramData\SteelSeries\GG\coreProps.json
+    fn discover_port_from_config_file() -> Result<u16> {
+        use std::fs;
+
+        let config_paths = Self::get_config_file_paths();
+
+        for path in config_paths {
+            if !path.exists() {
+                continue;
+            }
+
+            let contents = fs::read_to_string(&path).map_err(|e| {
+                Error::Audio(format!(
+                    "Failed to read coreProps.json at {:?}: {}",
+                    path, e
+                ))
+            })?;
+
+            let json: serde_json::Value = serde_json::from_str(&contents).map_err(|e| {
+                Error::Audio(format!(
+                    "Failed to parse coreProps.json at {:?}: {}",
+                    path, e
+                ))
+            })?;
+
+            // Extract port from coreProps.json structure
+            // Structure: { "ggEncryptedAddress": "https://127.0.0.1:PORT" }
+            // or { "address": "https://127.0.0.1:PORT" }
+            if let Some(address) = json
+                .get("ggEncryptedAddress")
+                .or_else(|| json.get("address"))
+                .and_then(|v| v.as_str())
+            {
+                if let Some(port_str) = address.split(':').last() {
+                    if let Ok(port) = port_str.parse::<u16>() {
+                        return Ok(port);
+                    }
+                }
+            }
+        }
+
+        Err(Error::Audio(
+            "coreProps.json not found or invalid".to_string(),
+        ))
+    }
+
+    /// Get platform-specific paths to coreProps.json.
+    fn get_config_file_paths() -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+
+        // Linux paths
+        if cfg!(target_os = "linux") {
+            if let Some(home) = std::env::var_os("HOME") {
+                let home_path = PathBuf::from(home);
+                paths.push(home_path.join(".config/SteelSeries/GG/coreProps.json"));
+                paths.push(home_path.join(".local/share/SteelSeries/GG/coreProps.json"));
+            }
+            paths.push(PathBuf::from("/etc/SteelSeries/GG/coreProps.json"));
+        }
+
+        // Windows paths
+        if cfg!(target_os = "windows") {
+            if let Some(programdata) = std::env::var_os("PROGRAMDATA") {
+                paths.push(PathBuf::from(programdata).join("SteelSeries/GG/coreProps.json"));
+            }
+        }
+
+        paths
+    }
+
+    /// Discover Sonar port via HTTP API query to GG core service.
+    async fn discover_port_from_http_api(client: &reqwest::Client) -> Result<u16> {
         // Query the subApps endpoint to find the Sonar port
         let url = "http://127.0.0.1:6327/subApps";
         let response = client
@@ -142,12 +298,10 @@ impl SonarClient {
             .map_err(|e| Error::Audio(format!("Failed to read port discovery response: {}", e)))?;
 
         // Parse the response to extract the Sonar port
-        // The response format is typically JSON containing port information
         let json: serde_json::Value = serde_json::from_str(&body)
             .map_err(|e| Error::Audio(format!("Failed to parse port discovery response: {}", e)))?;
 
         // Look for the Sonar port in the response
-        // The exact structure depends on the API response format
         if let Some(apps) = json.as_array() {
             for app in apps {
                 if let Some(name) = app.get("name").and_then(|n| n.as_str()) {
@@ -160,15 +314,8 @@ impl SonarClient {
             }
         }
 
-        // If we can't find the port in the structured response, try common ports
-        for port in [37330, 37331, 37332, 37333, 37334, 37335] {
-            if Self::test_port(&client, port).await {
-                return Ok(port);
-            }
-        }
-
         Err(Error::Audio(
-            "Could not discover Sonar port. Is SteelSeries Sonar running?".to_string(),
+            "Sonar port not found in API response".to_string(),
         ))
     }
 
@@ -309,48 +456,187 @@ impl SonarClient {
     }
 
     // ========================================================================
+    // Channel-specific GET/SET operations
+    // ========================================================================
+
+    /// Get volume for a specific channel (classic mode).
+    pub async fn get_channel_volume(&self, channel: SonarChannel) -> Result<f32> {
+        let url = format!(
+            "{}/volumeSettings/classic/{}/volume",
+            self.base_url,
+            channel.as_str()
+        );
+        self.get(&url).await
+    }
+
+    /// Set volume for a specific channel (classic mode).
+    pub async fn set_channel_volume(&self, channel: SonarChannel, volume: f32) -> Result<()> {
+        self.set_volume("classic", channel.as_str(), volume).await
+    }
+
+    /// Get mute state for a specific channel (classic mode).
+    pub async fn get_channel_mute(&self, channel: SonarChannel) -> Result<bool> {
+        let url = format!(
+            "{}/volumeSettings/classic/{}/mute",
+            self.base_url,
+            channel.as_str()
+        );
+        self.get(&url).await
+    }
+
+    /// Set mute state for a specific channel (classic mode).
+    pub async fn set_channel_mute(&self, channel: SonarChannel, muted: bool) -> Result<()> {
+        let url = format!(
+            "{}/volumeSettings/classic/{}/mute/{}",
+            self.base_url,
+            channel.as_str(),
+            muted
+        );
+        self.put(&url).await
+    }
+
+    /// Get volume for a specific channel (streamer monitoring).
+    pub async fn get_monitoring_channel_volume(&self, channel: SonarChannel) -> Result<f32> {
+        let url = format!(
+            "{}/volumeSettings/streamer/monitoring/{}/volume",
+            self.base_url,
+            channel.as_str()
+        );
+        self.get(&url).await
+    }
+
+    /// Set volume for a specific channel (streamer monitoring).
+    pub async fn set_monitoring_channel_volume(
+        &self,
+        channel: SonarChannel,
+        volume: f32,
+    ) -> Result<()> {
+        self.set_volume("streamer/monitoring", channel.as_str(), volume)
+            .await
+    }
+
+    /// Get volume for a specific channel (streamer streaming).
+    pub async fn get_streaming_channel_volume(&self, channel: SonarChannel) -> Result<f32> {
+        let url = format!(
+            "{}/volumeSettings/streamer/streaming/{}/volume",
+            self.base_url,
+            channel.as_str()
+        );
+        self.get(&url).await
+    }
+
+    /// Set volume for a specific channel (streamer streaming).
+    pub async fn set_streaming_channel_volume(
+        &self,
+        channel: SonarChannel,
+        volume: f32,
+    ) -> Result<()> {
+        self.set_volume("streamer/streaming", channel.as_str(), volume)
+            .await
+    }
+
+    // ========================================================================
     // Helper methods
     // ========================================================================
 
     /// Perform a GET request and deserialize the response.
+    ///
+    /// Retries transient failures (connection errors, timeouts) up to 2 times.
     async fn get<T: serde::de::DeserializeOwned>(&self, url: &str) -> Result<T> {
-        let response = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| Error::Audio(format!("GET request failed: {}", e)))?;
+        const MAX_RETRIES: u32 = 2;
 
-        if !response.status().is_success() {
-            return Err(Error::Audio(format!(
-                "GET request failed with status: {}",
-                response.status()
-            )));
+        let mut last_error = None;
+
+        for attempt in 0..=MAX_RETRIES {
+            if attempt > 0 {
+                tracing::debug!(
+                    "Retrying GET request (attempt {}/{})",
+                    attempt + 1,
+                    MAX_RETRIES + 1
+                );
+                tokio::time::sleep(Duration::from_millis(100 * attempt as u64)).await;
+            }
+
+            let response = match self.client.get(url).send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    if Self::is_transient_error(&e) && attempt < MAX_RETRIES {
+                        last_error = Some(e);
+                        continue;
+                    }
+                    return Err(Error::Audio(format!("GET request failed: {}", e)));
+                }
+            };
+
+            if !response.status().is_success() {
+                return Err(Error::Audio(format!(
+                    "GET request failed with status: {}",
+                    response.status()
+                )));
+            }
+
+            return response
+                .json()
+                .await
+                .map_err(|e| Error::Audio(format!("Failed to parse response: {}", e)));
         }
 
-        response
-            .json()
-            .await
-            .map_err(|e| Error::Audio(format!("Failed to parse response: {}", e)))
+        Err(Error::Audio(format!(
+            "GET request failed after {} retries: {}",
+            MAX_RETRIES,
+            last_error.unwrap()
+        )))
     }
 
     /// Perform a PUT request.
+    ///
+    /// Retries transient failures (connection errors, timeouts) up to 2 times.
     async fn put(&self, url: &str) -> Result<()> {
-        let response = self
-            .client
-            .put(url)
-            .send()
-            .await
-            .map_err(|e| Error::Audio(format!("PUT request failed: {}", e)))?;
+        const MAX_RETRIES: u32 = 2;
 
-        if !response.status().is_success() {
-            return Err(Error::Audio(format!(
-                "PUT request failed with status: {}",
-                response.status()
-            )));
+        let mut last_error = None;
+
+        for attempt in 0..=MAX_RETRIES {
+            if attempt > 0 {
+                tracing::debug!(
+                    "Retrying PUT request (attempt {}/{})",
+                    attempt + 1,
+                    MAX_RETRIES + 1
+                );
+                tokio::time::sleep(Duration::from_millis(100 * attempt as u64)).await;
+            }
+
+            let response = match self.client.put(url).send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    if Self::is_transient_error(&e) && attempt < MAX_RETRIES {
+                        last_error = Some(e);
+                        continue;
+                    }
+                    return Err(Error::Audio(format!("PUT request failed: {}", e)));
+                }
+            };
+
+            if !response.status().is_success() {
+                return Err(Error::Audio(format!(
+                    "PUT request failed with status: {}",
+                    response.status()
+                )));
+            }
+
+            return Ok(());
         }
 
-        Ok(())
+        Err(Error::Audio(format!(
+            "PUT request failed after {} retries: {}",
+            MAX_RETRIES,
+            last_error.unwrap()
+        )))
+    }
+
+    /// Check if an HTTP error is transient and should be retried.
+    fn is_transient_error(error: &reqwest::Error) -> bool {
+        error.is_timeout() || error.is_connect() || error.is_request()
     }
 
     /// Generic helper to set volume for a specific path.

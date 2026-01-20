@@ -24,3 +24,6 @@ nohup.out
 # Session/temporary documentation (moved to docs/archive)
 docs/archive/
 .serena/
+
+# Auto Claude data directory
+.auto-claude/

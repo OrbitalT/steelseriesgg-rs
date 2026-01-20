@@ -291,20 +291,15 @@ impl Default for PerKeyEffect {
 }
 
 /// Timing mode for effect rendering.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum TimingMode {
     /// Fixed timing interval (legacy mode)
     Fixed,
     /// Adaptive timing based on effect complexity and system performance
+    #[default]
     Adaptive,
     /// High performance mode with optimizations for consistent timing
     HighPerformance,
-}
-
-impl Default for TimingMode {
-    fn default() -> Self {
-        TimingMode::Adaptive
-    }
 }
 
 /// RGB effect engine that computes colors over time with adaptive timing support.
@@ -442,7 +437,7 @@ impl EffectEngine {
             Effect::Static { color } => {
                 // Use extend with repeat iterator for better performance than resize
                 self.cached_colors
-                    .extend(std::iter::repeat(*color).take(self.zone_count));
+                    .extend(std::iter::repeat_n(*color, self.zone_count));
             }
 
             Effect::Breathing { color, speed } => {
@@ -451,7 +446,7 @@ impl EffectEngine {
                 let brightness = (t + 1.0) * 0.5; // Use multiplication instead of division
                 let scaled_color = color.scale(brightness);
                 self.cached_colors
-                    .extend(std::iter::repeat(scaled_color).take(self.zone_count));
+                    .extend(std::iter::repeat_n(scaled_color, self.zone_count));
             }
 
             Effect::Spectrum { speed } => {
@@ -459,7 +454,7 @@ impl EffectEngine {
                 let hue = (elapsed_secs * speed * 360.0) % 360.0;
                 let color = Color::from_hsv(hue, 1.0, 1.0);
                 self.cached_colors
-                    .extend(std::iter::repeat(color).take(self.zone_count));
+                    .extend(std::iter::repeat_n(color, self.zone_count));
             }
 
             Effect::Wave {
@@ -469,7 +464,7 @@ impl EffectEngine {
             } => {
                 if colors.is_empty() {
                     self.cached_colors
-                        .extend(std::iter::repeat(Color::BLACK).take(self.zone_count));
+                        .extend(std::iter::repeat_n(Color::BLACK, self.zone_count));
                 } else {
                     let phase = elapsed_secs * speed;
                     let zone_count_f32 = self.zone_count as f32;
@@ -510,7 +505,7 @@ impl EffectEngine {
                 // Base state - actual reactivity handled by input events
                 let scaled_color = color.scale(0.2);
                 self.cached_colors
-                    .extend(std::iter::repeat(scaled_color).take(self.zone_count));
+                    .extend(std::iter::repeat_n(scaled_color, self.zone_count));
             }
 
             Effect::Gradient { start, end } => {
@@ -530,13 +525,13 @@ impl EffectEngine {
                 if self.zone_count > copy_len {
                     let remaining = self.zone_count - copy_len;
                     self.cached_colors
-                        .extend(std::iter::repeat(Color::BLACK).take(remaining));
+                        .extend(std::iter::repeat_n(Color::BLACK, remaining));
                 }
             }
 
             Effect::Off => {
                 self.cached_colors
-                    .extend(std::iter::repeat(Color::BLACK).take(self.zone_count));
+                    .extend(std::iter::repeat_n(Color::BLACK, self.zone_count));
             }
         }
 

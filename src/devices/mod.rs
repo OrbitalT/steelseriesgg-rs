@@ -118,6 +118,7 @@ pub trait Device: Send + Sync {
 /// Report cache entry for deduplication.
 #[derive(Debug, Clone)]
 struct CachedReport {
+    #[allow(dead_code)]
     data: Vec<u8>,
     last_sent: Instant,
 }
@@ -130,6 +131,12 @@ pub struct HidOptimizer {
     connectivity_cache: Mutex<HashMap<String, (bool, Instant)>>,
     /// Cache timeout for reports (ms)
     cache_timeout: Duration,
+}
+
+impl Default for HidOptimizer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl HidOptimizer {
@@ -199,7 +206,7 @@ static HID_OPTIMIZER: OnceLock<HidOptimizer> = OnceLock::new();
 
 /// Get the global HID optimizer instance.
 fn get_hid_optimizer() -> &'static HidOptimizer {
-    HID_OPTIMIZER.get_or_init(|| HidOptimizer::new())
+    HID_OPTIMIZER.get_or_init(HidOptimizer::new)
 }
 
 /// Write a padded HID report, handling the optional leading report ID byte and
@@ -374,10 +381,7 @@ where
     }
 
     // Minimize time in critical section
-    let write_result =
-        { write_padded_report(device, &prepared_data, report_len, include_report_id) };
-
-    write_result
+    write_padded_report(device, &prepared_data, report_len, include_report_id)
 }
 
 /// Known SteelSeries device product IDs.

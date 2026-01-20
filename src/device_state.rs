@@ -242,6 +242,7 @@ pub struct DeviceStateStore {
     states: Arc<RwLock<HashMap<DeviceId, DeviceState>>>,
     state_file: PathBuf,
     dirty_flag: Arc<Mutex<bool>>,
+    #[allow(dead_code)]
     last_write_time: Arc<Mutex<Instant>>,
     write_behind_handle: Option<tokio::task::JoinHandle<()>>,
 }
@@ -326,7 +327,7 @@ impl DeviceStateStore {
     /// Async save operation with atomic write using temp file.
     async fn save_async(
         states: &Arc<RwLock<HashMap<DeviceId, DeviceState>>>,
-        state_file: &PathBuf,
+        state_file: &std::path::Path,
     ) -> Result<()> {
         let states_guard = states.read().await;
         let serializable = SerializableStates::from(&*states_guard);
@@ -342,7 +343,7 @@ impl DeviceStateStore {
 
         // Use blocking file operations in a spawn_blocking task
         let temp_file_clone = temp_file.clone();
-        let state_file_clone = state_file.clone();
+        let state_file_clone = state_file.to_path_buf();
 
         tokio::task::spawn_blocking(move || -> Result<()> {
             std::fs::write(&temp_file_clone, content)

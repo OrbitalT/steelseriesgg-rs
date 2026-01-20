@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use crate::{Error, Result};
 
 #[cfg(feature = "sonar")]
-pub use sonar::SonarClient;
+pub use sonar::{SonarChannel, SonarClient};
 
 // Channel types are used by both audio and sonar features
 #[cfg(any(feature = "audio", feature = "sonar"))]
@@ -335,7 +335,7 @@ impl AudioMixer {
             "Would apply channel {:?}: volume={:.2}, mute={}",
             channel,
             channel_state.volume,
-            channel_state.mute
+            channel_state.muted
         );
 
         // For now, validate the volume is in acceptable range

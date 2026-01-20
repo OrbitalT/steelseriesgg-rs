@@ -21,9 +21,14 @@ use steelseries_gg::validation::RgbValidator;
 use steelseries_gg::{Error, Result};
 
 use std::collections::HashMap;
+use std::io::IsTerminal;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
+
+use colored::Colorize;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use tabled::{Table, Tabled};
 
 #[cfg(feature = "audio")]
 use steelseries_gg::audio::{AudioMixer, Channel};
@@ -57,6 +62,12 @@ enum Commands {
     Rgb {
         #[command(subcommand)]
         action: RgbAction,
+    },
+
+    /// Control actuation points on compatible keyboards
+    Actuation {
+        #[command(subcommand)]
+        action: ActuationAction,
     },
 
     /// Manage profiles
@@ -117,8 +128,74 @@ enum Commands {
         action: PerformanceAction,
     },
 
+    /// Generate a comprehensive bug report with diagnostic information
+    BugReport {
+        /// Output file path
+        #[arg(short, long, default_value = "ssgg_bug_report.json")]
+        output: String,
+
+        /// Include HID communication logs (if available)
+        #[arg(long)]
+        include_hid_logs: bool,
+
+        /// Include performance metrics snapshot (if daemon is running)
+        #[arg(long)]
+        include_performance: bool,
+    },
+
+    /// Show real-time device connection status
+    Status {
+        /// Filter by device type (keyboard, headset, or all)
+        #[arg(short, long, default_value = "all")]
+        device: String,
+
+        /// Refresh interval in milliseconds
+        #[arg(short, long, default_value = "1000")]
+        refresh: u64,
+    },
+
+    /// View HID communication logs with filtering
+    HidLogs {
+        /// Enable file logging
+        #[arg(short, long)]
+        file: bool,
+
+        /// Filter by device type (keyboard, headset, or all)
+        #[arg(short, long)]
+        device: Option<String>,
+    },
+
     /// Run as a daemon (device control + GameSense server)
     Daemon,
+
+    /// Run automated device tests to verify responsiveness
+    TestDevice {
+        /// Device name or path to test
+        device: String,
+
+        /// Enable performance benchmarks
+        #[arg(short, long)]
+        benchmark: bool,
+
+        /// Show detailed output including passing tests
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Verify RGB performance metrics over time
+    VerifyPerformance {
+        /// Duration to monitor in seconds
+        #[arg(short, long, default_value = "30")]
+        duration: u64,
+
+        /// Effect to test (breathing, spectrum, wave, etc.)
+        #[arg(short, long, default_value = "breathing")]
+        effect: String,
+
+        /// Export metrics to JSON file
+        #[arg(short, long)]
+        output: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -152,6 +229,21 @@ enum RgbAction {
     Perkey {
         #[command(subcommand)]
         action: PerKeyAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ActuationAction {
+    /// Set actuation point for all keys (global)
+    Set {
+        /// Actuation point in millimeters (0.1 to 4.0mm, e.g., 1.2, 2.5, 3.6)
+        mm: f32,
+    },
+
+    /// Set actuation point in 0.1mm increments (e.g., 4 = 0.4mm, 25 = 2.5mm)
+    SetValue {
+        /// Actuation value in 0.1mm units (1-40)
+        value: u8,
     },
 }
 
@@ -483,6 +575,48 @@ fn parse_zone_number(zone: &str) -> Option<usize> {
     })
 }
 
+/// Generate a comprehensive bug report with diagnostic information.
+async fn cmd_bug_report(
+    output: &str,
+    include_hid_logs: bool,
+    include_performance: bool,
+) -> Result<()> {
+    use steelseries_gg::diagnostics_export::{collect_bug_report, export_bug_report};
+
+    println!("Collecting diagnostic information...");
+    println!("  - System information (OS, kernel, memory, CPU)");
+    println!("  - Device states (connected devices, current settings)");
+
+    if include_hid_logs {
+        println!("  - HID communication logs");
+    }
+
+    if include_performance {
+        println!("  - Performance metrics snapshot");
+    }
+
+    println!();
+
+    // Collect bug report (async, uses spawn_blocking internally for sysinfo)
+    let report = collect_bug_report(include_hid_logs, include_performance).await?;
+
+    // Export to file (async file I/O)
+    export_bug_report(&report, output).await?;
+
+    // Print privacy warning
+    use colored::Colorize;
+    println!();
+    println!("{}", "WARNING:".yellow().bold());
+    println!("  This report may contain:");
+    println!("    - Device serial numbers and identifiers");
+    println!("    - System paths and usernames");
+    println!("    - Performance data and timing information");
+    println!();
+    println!("  Please review the file before sharing publicly.");
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -512,6 +646,11 @@ async fn main() -> Result<()> {
         Commands::Rgb { action } => {
             let manager = DeviceManager::new()?;
             cmd_rgb(&manager, action)?;
+        }
+
+        Commands::Actuation { action } => {
+            let manager = DeviceManager::new()?;
+            cmd_actuation(&manager, action)?;
         }
 
         Commands::Profile { action } => {
@@ -551,9 +690,44 @@ async fn main() -> Result<()> {
             cmd_performance(&manager, action)?;
         }
 
+        Commands::BugReport {
+            output,
+            include_hid_logs,
+            include_performance,
+        } => {
+            cmd_bug_report(&output, include_hid_logs, include_performance).await?;
+        }
+
+        Commands::Status { device, refresh } => {
+            let manager = DeviceManager::new()?;
+            cmd_status(&manager, &device, refresh).await?;
+        }
+
+        Commands::HidLogs { file, device } => {
+            cmd_hid_logs(file, device.as_deref()).await?;
+        }
+
         Commands::Daemon => {
             let manager = DeviceManager::new()?;
             cmd_daemon(manager).await?;
+        }
+
+        Commands::TestDevice {
+            device,
+            benchmark,
+            verbose,
+        } => {
+            let manager = DeviceManager::new()?;
+            cmd_test_device(&manager, &device, benchmark, verbose)?;
+        }
+
+        Commands::VerifyPerformance {
+            duration,
+            effect,
+            output,
+        } => {
+            let manager = DeviceManager::new()?;
+            cmd_verify_performance(&manager, duration, &effect, output).await?;
         }
     }
 
@@ -579,7 +753,7 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> Result<()> {
     println!("Using keyboard: {}", keyboard_info.name);
 
     // Open device state store for persistence
-    let mut state_store = DeviceStateStore::new()?;
+    let state_store = DeviceStateStore::new()?;
     let device_id = DeviceId::from(keyboard_info);
 
     // Open the keyboard using the abstraction layer
@@ -663,6 +837,55 @@ fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> Result<()> {
 
         RgbAction::Perkey { action } => {
             cmd_per_key_rgb(&mut keyboard, action)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn cmd_actuation(manager: &DeviceManager, action: ActuationAction) -> Result<()> {
+    // Find the first keyboard
+    let keyboard_info = manager
+        .first_device_of_type(DeviceType::Keyboard)
+        .ok_or_else(|| Error::Other("No keyboard found".to_string()))?;
+
+    println!("Using keyboard: {}", keyboard_info.name);
+
+    // Open the keyboard using the abstraction layer
+    let mut keyboard = manager.open_keyboard(keyboard_info)?;
+
+    // Initialize the device
+    keyboard.initialize()?;
+
+    match action {
+        ActuationAction::Set { mm } => {
+            println!("Setting actuation point to {:.1}mm", mm);
+
+            // Validate range
+            if mm < 0.1 || mm > 4.0 {
+                return Err(Error::Other(
+                    "Actuation point must be between 0.1mm and 4.0mm".to_string(),
+                ));
+            }
+
+            keyboard.set_actuation_point_mm(mm)?;
+            keyboard.apply()?;
+            println!("Actuation point set successfully!");
+        }
+
+        ActuationAction::SetValue { value } => {
+            println!("Setting actuation value to {}", value);
+
+            // Validate range
+            if !(1..=40).contains(&value) {
+                return Err(Error::InvalidConfig(
+                    "Actuation point value must be between 1 and 40".to_string(),
+                ));
+            }
+
+            keyboard.set_actuation_point(value)?;
+            keyboard.apply()?;
+            println!("Actuation value set successfully!");
         }
     }
 
@@ -1097,7 +1320,7 @@ fn cmd_profile(action: ProfileAction) -> Result<()> {
                 println!("Loading profile: {}", profile.name);
 
                 let device_manager = DeviceManager::new()?;
-                let mut state_store = DeviceStateStore::new()?;
+                let state_store = DeviceStateStore::new()?;
 
                 // Apply keyboard settings if present
                 if let Some(ref keyboard_profile) = profile.keyboard {
@@ -1478,7 +1701,7 @@ fn cmd_validate(
             device_info.name, device_info.product_id
         );
 
-        match manager.open_keyboard(&device_info) {
+        match manager.open_keyboard(device_info) {
             Ok(mut keyboard) => {
                 let report = validator.validate_keyboard(&mut *keyboard);
 
@@ -1587,7 +1810,7 @@ fn cmd_validate(
                         content.push_str(&format!("  Note: {}\n", note));
                     }
                 }
-                content.push_str("\n");
+                content.push('\n');
             }
             content
         };
@@ -1956,7 +2179,7 @@ fn export_performance_stats(
                 } else {
                     content.push_str("- Performance stats: Not available\n");
                 }
-                content.push_str("\n");
+                content.push('\n');
             }
         }
 
@@ -2668,5 +2891,489 @@ async fn cmd_daemon(mut manager: DeviceManager) -> Result<()> {
     }
 
     info!("Daemon stopped.");
+    Ok(())
+}
+
+/// Show device status with optional live monitoring.
+async fn cmd_status(
+    _initial_manager: &DeviceManager,
+    device_filter: &str,
+    refresh_ms: u64,
+) -> Result<()> {
+    #[derive(Tabled)]
+    struct DeviceRow {
+        #[tabled(rename = "Name")]
+        name: String,
+        #[tabled(rename = "Type")]
+        device_type: String,
+        #[tabled(rename = "VID:PID")]
+        vid_pid: String,
+        #[tabled(rename = "Path")]
+        path: String,
+        #[tabled(rename = "Status")]
+        status: String,
+    }
+
+    // Check if stdout is a TTY
+    let is_tty = std::io::stdout().is_terminal();
+
+    // Get initial device list (create new manager for mutations)
+    let mut manager = DeviceManager::new()?;
+    manager.refresh()?;
+
+    // Filter devices by type
+    let filter_type = match device_filter.to_lowercase().as_str() {
+        "keyboard" => Some(DeviceType::Keyboard),
+        "headset" => Some(DeviceType::Headset),
+        "all" => None,
+        _ => {
+            return Err(Error::Other(format!(
+                "Invalid device filter: {}. Use 'keyboard', 'headset', or 'all'",
+                device_filter
+            )));
+        }
+    };
+
+    if is_tty {
+        // TTY mode: Real-time updates with progress bars
+        let multi_progress = MultiProgress::new();
+        let spinner_style =
+            ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {prefix}: {msg}")
+                .map_err(|e| Error::Other(format!("Template error: {}", e)))?;
+
+        // Create progress bars for each device
+        let mut progress_bars: Vec<(DeviceInfo, ProgressBar)> = Vec::new();
+
+        for device_info in manager.devices() {
+            if let Some(filter) = filter_type {
+                if device_info.device_type != filter {
+                    continue;
+                }
+            }
+
+            let pb = multi_progress.add(ProgressBar::new_spinner());
+            pb.set_style(spinner_style.clone());
+            pb.set_prefix(device_info.name.clone());
+
+            let device_type_str = match device_info.device_type {
+                DeviceType::Keyboard => "Keyboard",
+                DeviceType::Headset => "Headset",
+                DeviceType::Unknown => "Unknown",
+            };
+
+            pb.set_message(format!("Status: Connected | Type: {}", device_type_str));
+            progress_bars.push((device_info.clone(), pb));
+        }
+
+        if progress_bars.is_empty() {
+            println!("No devices found matching filter: {}", device_filter);
+            return Ok(());
+        }
+
+        println!(
+            "Monitoring {} device(s) - Press Ctrl+C to stop",
+            progress_bars.len()
+        );
+
+        // Create refresh interval
+        let mut interval = tokio::time::interval(Duration::from_millis(refresh_ms));
+
+        // Monitor until Ctrl+C
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    // Refresh device manager
+                    manager.refresh()?;
+
+                    // Update progress bars
+                    for (device_info, pb) in &progress_bars {
+                        let device_type_str = match device_info.device_type {
+                            DeviceType::Keyboard => "Keyboard",
+                            DeviceType::Headset => "Headset",
+                            DeviceType::Unknown => "Unknown",
+                        };
+
+                        // Check if device still exists
+                        let still_connected = manager
+                            .devices()
+                            .iter()
+                            .any(|d| d.path == device_info.path);
+
+                        if still_connected {
+                            pb.set_message(format!(
+                                "Status: {} | Type: {}",
+                                "Connected".green(),
+                                device_type_str
+                            ));
+                        } else {
+                            pb.set_message(format!(
+                                "Status: {} | Type: {}",
+                                "Disconnected".red(),
+                                device_type_str
+                            ));
+                        }
+                        pb.tick();
+                    }
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    println!("
+            Stopping device monitoring...");
+                    break;
+                }
+            }
+        }
+    } else {
+        // Non-TTY mode: Single table output
+        let mut rows: Vec<DeviceRow> = Vec::new();
+
+        for device_info in manager.devices() {
+            if let Some(filter) = filter_type {
+                if device_info.device_type != filter {
+                    continue;
+                }
+            }
+
+            let device_type_str = match device_info.device_type {
+                DeviceType::Keyboard => "Keyboard",
+                DeviceType::Headset => "Headset",
+                DeviceType::Unknown => "Unknown",
+            };
+
+            rows.push(DeviceRow {
+                name: device_info.name.clone(),
+                device_type: device_type_str.to_string(),
+                vid_pid: format!(
+                    "{:04X}:{:04X}",
+                    device_info.vendor_id, device_info.product_id
+                ),
+                path: device_info.path.clone(),
+                status: "Connected".to_string(),
+            });
+        }
+
+        if rows.is_empty() {
+            println!("No devices found matching filter: {}", device_filter);
+        } else {
+            let table = Table::new(rows).to_string();
+            println!("{}", table);
+        }
+    }
+
+    Ok(())
+}
+
+/// View or manage HID communication logs.
+async fn cmd_hid_logs(file_logging: bool, device_filter: Option<&str>) -> Result<()> {
+    // Initialize diagnostics with recording enabled
+    init_global_diagnostics(true)?;
+
+    // Enable file logging if requested
+    if file_logging {
+        with_global_diagnostics(|diag| diag.enable_file_logging())
+            .ok_or_else(|| Error::Other("Failed to access diagnostics".to_string()))??;
+
+        info!("HID logging enabled - output will be written to timestamped file");
+    }
+
+    // Parse device filter
+    let _filter_type = if let Some(filter) = device_filter {
+        match filter.to_lowercase().as_str() {
+            "keyboard" => Some(DeviceType::Keyboard),
+            "headset" => Some(DeviceType::Headset),
+            "all" => None,
+            _ => {
+                return Err(Error::Other(format!(
+                    "Invalid device filter: {}. Use 'keyboard', 'headset', or 'all'",
+                    filter
+                )));
+            }
+        }
+    } else {
+        None
+    };
+
+    println!("HID Communication Log Viewer");
+    println!("============================");
+    if let Some(filter) = device_filter {
+        println!("Filter: {}", filter);
+    }
+    println!("Press Ctrl+C to stop and view summary\n");
+
+    // Create interval for periodic summary display
+    let mut interval = tokio::time::interval(Duration::from_secs(1));
+    let start_time = Instant::now();
+
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {
+                // Get diagnostic summary
+                if let Some(summary) = with_global_diagnostics(|diag| {
+                    let analysis = diag.analyze_timing_patterns();
+                    format!(
+                        "Ops: {} | Failed: {} | Avg Send: {:.2}ms | Avg Recv: {:.2}ms | Elapsed: {:.1}s",
+                        analysis.total_operations,
+                        analysis.failed_operations,
+                        analysis.avg_send_time.as_secs_f64() * 1000.0,
+                        analysis.avg_receive_time.as_secs_f64() * 1000.0,
+                        start_time.elapsed().as_secs_f64()
+                    )
+                }) {
+                    print!("{}", summary);
+                    std::io::Write::flush(&mut std::io::stdout())
+                        .map_err(|e| Error::Io(e))?;
+                }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                println!("
+
+Final Summary:");
+                println!("==============");
+
+                if let Some(summary) = with_global_diagnostics(|diag| diag.get_summary()) {
+                    println!("{}", summary);
+                } else {
+                    println!("No diagnostic data collected.");
+                }
+
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Run automated device tests to verify responsiveness.
+fn cmd_test_device(
+    manager: &DeviceManager,
+    device: &str,
+    benchmark: bool,
+    verbose: bool,
+) -> Result<()> {
+    use std::io::{self, IsTerminal};
+    use steelseries_gg::validation::{RgbValidator, print_test_results};
+
+    // Create validator with benchmark mode if requested
+    let mut validator = RgbValidator::new();
+    if benchmark {
+        validator = validator.with_benchmarks();
+    }
+
+    // Try to find and open the device by name or path
+    let device_info = manager
+        .devices()
+        .into_iter()
+        .find(|d| d.name.to_lowercase().contains(&device.to_lowercase()) || d.path.contains(device))
+        .ok_or_else(|| {
+            Error::Other(format!(
+                "Device '{}' not found. Use 'ssgg devices' to list available devices.",
+                device
+            ))
+        })?;
+
+    println!("\nTesting device: {}\n", device_info.name);
+
+    // Open device and run validation based on type
+    let report = match device_info.device_type {
+        DeviceType::Keyboard => {
+            let mut keyboard = manager.open_keyboard(&device_info)?;
+            validator.validate_keyboard(&mut *keyboard)
+        }
+        _ => {
+            return Err(Error::Other(format!(
+                "Device type {:?} not supported for testing yet. Only keyboards supported.",
+                device_info.device_type
+            )));
+        }
+    };
+
+    // Display results with colored output if terminal supports it
+    let use_colors = io::stdout().is_terminal();
+    print_test_results(&report, verbose, use_colors);
+
+    // Exit with appropriate code based on health
+    if report.is_healthy() {
+        std::process::exit(0);
+    } else {
+        std::process::exit(1);
+    }
+}
+
+/// Verify RGB performance metrics over time.
+async fn cmd_verify_performance(
+    manager: &DeviceManager,
+    duration: u64,
+    effect_name: &str,
+    output: Option<String>,
+) -> Result<()> {
+    use colored::Colorize;
+    use std::io::{self, IsTerminal, Write};
+    use steelseries_gg::performance::PerformanceMonitor;
+    use tokio::time::{Duration, interval};
+
+    // Find first keyboard device
+    let device_info = manager
+        .keyboards()
+        .first()
+        .map(|&d| d.clone())
+        .ok_or_else(|| {
+            Error::Other("No keyboard device found. Connect a keyboard and try again.".to_string())
+        })?;
+
+    println!("\nMonitoring RGB performance for: {}", device_info.name);
+    println!("Duration: {}s | Effect: {}\n", duration, effect_name);
+
+    // Parse effect name to Effect enum
+    let effect = match effect_name.to_lowercase().as_str() {
+        "breathing" => Effect::Breathing {
+            color: Color::CYAN,
+            speed: 1.0,
+        },
+        "spectrum" => Effect::Spectrum { speed: 0.5 },
+        "wave" => Effect::Wave {
+            colors: vec![Color::RED, Color::GREEN, Color::BLUE],
+            speed: 1.0,
+            direction: WaveDirection::LeftToRight,
+        },
+        "static" => Effect::Static { color: Color::RED },
+        _ => {
+            return Err(Error::Other(format!(
+                "Unknown effect '{}'. Valid: breathing, spectrum, wave, static",
+                effect_name
+            )));
+        }
+    };
+
+    // Open keyboard and create RGB controller
+    let mut keyboard = manager.open_keyboard(&device_info)?;
+    let zone_count = keyboard.zone_count();
+    let mut controller = RgbController::new(zone_count);
+    controller.set_effect(effect.clone());
+    controller.set_brightness(0.8);
+
+    // Create performance monitor
+    let mut monitor = PerformanceMonitor::new();
+
+    // Determine target FPS for effect
+    use steelseries_gg::performance::calculate_effect_complexity;
+    let complexity = calculate_effect_complexity(&effect);
+    monitor.set_effect_complexity(complexity);
+
+    let use_colors = io::stdout().is_terminal();
+    let start_time = Instant::now();
+    let mut frame_interval = interval(Duration::from_millis(16)); // ~60 FPS
+    let mut print_interval = interval(Duration::from_secs(1));
+
+    println!("Starting performance monitoring...\n");
+
+    loop {
+        tokio::select! {
+            _ = frame_interval.tick() => {
+                let frame_start = Instant::now();
+
+                // Compute colors
+                let compute_start = Instant::now();
+                let colors = controller.compute_colors();
+                let compute_time = compute_start.elapsed();
+
+                // Send to device - use single color for all zones
+                keyboard.set_color(colors[0])?;
+                keyboard.apply()?;
+
+                // Record timing
+                let frame_duration = frame_start.elapsed();
+                monitor.record_frame_timing(frame_duration, compute_time);
+            }
+
+            _ = print_interval.tick() => {
+                let metrics = monitor.metrics();
+                let elapsed = start_time.elapsed().as_secs();
+
+                // Format metrics with color coding
+                let fps_str = format!("{:.1}/{:.1}", metrics.actual_fps, metrics.target_fps);
+                let fps_colored = if use_colors {
+                    let fps_ratio = metrics.actual_fps / metrics.target_fps;
+                    if fps_ratio >= 0.8 {
+                        fps_str.green()
+                    } else if fps_ratio >= 0.6 {
+                        fps_str.yellow()
+                    } else {
+                        fps_str.red()
+                    }
+                } else {
+                    fps_str.into()
+                };
+
+                let frame_time_str = format!("{:.2}ms", metrics.frame_time);
+                let frame_time_colored = if use_colors {
+                    if metrics.frame_time <= 20.0 {
+                        frame_time_str.green()
+                    } else {
+                        frame_time_str.yellow()
+                    }
+                } else {
+                    frame_time_str.into()
+                };
+
+                let dropped_str = format!("{}", metrics.dropped_frames);
+                let dropped_colored = if use_colors && metrics.dropped_frames > 0 {
+                    let drop_rate = metrics.dropped_frames as f32 / metrics.total_frames as f32;
+                    if drop_rate > 0.05 {
+                        dropped_str.red()
+                    } else {
+                        dropped_str.yellow()
+                    }
+                } else {
+                    dropped_str.into()
+                };
+
+                print!(
+                    "\r[{:02}s] FPS: {} | Frame: {} | Cache: {:.1}% | Dropped: {}     ",
+                    elapsed,
+                    fps_colored,
+                    frame_time_colored,
+                    metrics.cache_hit_rate * 100.0,
+                    dropped_colored
+                );
+                io::stdout().flush().ok();
+
+                // Check if duration reached
+                if elapsed >= duration {
+                    break;
+                }
+            }
+        }
+    }
+
+    println!("\n\nPerformance Monitoring Complete\n");
+    println!("================================================================================");
+
+    let metrics = monitor.metrics();
+
+    // Print final summary
+    println!("Summary:");
+    println!("  Total frames:     {}", metrics.total_frames);
+    println!(
+        "  Average FPS:      {:.1} (target: {:.1})",
+        metrics.actual_fps, metrics.target_fps
+    );
+    println!("  Average frame time: {:.2}ms", metrics.frame_time);
+    println!("  Cache hit rate:   {:.1}%", metrics.cache_hit_rate * 100.0);
+    println!(
+        "  Dropped frames:   {} ({:.2}%)",
+        metrics.dropped_frames,
+        (metrics.dropped_frames as f32 / metrics.total_frames as f32) * 100.0
+    );
+
+    // Export to JSON if requested
+    if let Some(output_path) = output {
+        use std::fs;
+        let json = serde_json::to_string_pretty(&metrics)
+            .map_err(|e| Error::Other(format!("Failed to serialize metrics: {}", e)))?;
+        fs::write(&output_path, json)
+            .map_err(|e| Error::Other(format!("Failed to write {}: {}", output_path, e)))?;
+        println!("\nMetrics exported to: {}", output_path);
+    }
+
     Ok(())
 }
