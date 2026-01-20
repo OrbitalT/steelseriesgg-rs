@@ -10,7 +10,6 @@
 //! - Background processing
 //! - Smart invalidation strategies
 
-
 use crate::rgb::{Color, Effect, PerKeyEffect};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};

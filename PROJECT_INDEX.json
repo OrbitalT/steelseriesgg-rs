@@ -2,80 +2,54 @@
 	"project": {
 		"name": "steelseriesgg-rs",
 		"version": "0.1.0",
-		"description": "Open-source SteelSeries GG replacement for Linux",
-		"language": "Rust",
-		"min_rust_version": "1.70",
-		"license": "MIT",
+		"description": "A complete open-source SteelSeries GG replacement for Linux",
 		"repository": "https://github.com/Ven0m0/steelseriesgg-rs",
-		"generated": "2026-01-18",
-		"index_version": "2.0"
+		"license": "MIT",
+		"language": "Rust",
+		"edition": "2021",
+		"generated": "2026-01-20"
 	},
 	"binaries": [
 		{
 			"name": "ssgg",
 			"path": "src/main.rs",
-			"description": "CLI application for SteelSeries device control"
+			"type": "CLI",
+			"description": "Main SteelSeries GG replacement binary"
+		},
+		{
+			"name": "discover_actuation",
+			"path": "src/bin/discover_actuation.rs",
+			"type": "utility",
+			"description": "Device capability discovery tool"
+		},
+		{
+			"name": "sonar_control",
+			"path": "src/bin/sonar_control.rs",
+			"type": "utility",
+			"description": "SonarClient control utility",
+			"requiredFeatures": ["sonar"]
 		}
 	],
 	"library": {
 		"name": "steelseries_gg",
 		"path": "src/lib.rs",
-		"description": "Core library with device control, RGB, GameSense, and audio",
-		"public_modules": [
-			"devices",
-			"rgb",
-			"gamesense",
-			"audio",
-			"profiles",
-			"config",
-			"error",
-			"validation",
-			"performance",
-			"pollrate",
-			"device_state"
-		]
-	},
-	"entry_points": {
-		"cli": {
-			"path": "src/main.rs",
-			"binary": "ssgg",
-			"framework": "clap 4.5",
-			"commands": [
-				"devices",
-				"rgb",
-				"profile",
-				"audio",
-				"sonar",
-				"pollrate",
-				"server",
-				"validate",
-				"daemon"
-			]
-		},
-		"library": {
-			"path": "src/lib.rs",
-			"name": "steelseries_gg",
-			"prelude": "steelseries_gg::prelude"
-		}
+		"description": "Rust library for SteelSeries hardware integration"
 	},
 	"modules": {
 		"devices": {
 			"path": "src/devices/",
-			"purpose": "Device discovery and hardware communication",
-			"key_types": [
-				"Device",
+			"description": "Hardware discovery and HID communication",
+			"exports": [
+				"Device (trait)",
+				"DeviceManager",
 				"DeviceInfo",
 				"DeviceType",
-				"DeviceManager",
-				"HidCommand",
-				"KeyId",
-				"KeyAddress",
-				"ZoneMapping"
+				"HidReportBuilder"
 			],
 			"submodules": [
 				"discovery",
-				"diagnostics",
 				"hid_reports",
+				"diagnostics",
 				"key_mapping",
 				"zone_mapping",
 				"keyboards",
@@ -84,15 +58,13 @@
 		},
 		"rgb": {
 			"path": "src/rgb/",
-			"purpose": "RGB color and lighting effects",
-			"key_types": [
+			"description": "Color representation and lighting effects",
+			"exports": [
 				"Color",
 				"Effect",
 				"EffectEngine",
 				"RgbController",
-				"PerKeyRgbController",
-				"PerKeyEffect",
-				"WaveDirection"
+				"PerKeyRgbController"
 			],
 			"effects": [
 				"Static",
@@ -102,408 +74,200 @@
 				"Reactive",
 				"Gradient",
 				"Custom",
-				"Off",
-				"PerKey"
+				"Off"
 			]
 		},
 		"gamesense": {
 			"path": "src/gamesense/",
-			"purpose": "GameSense HTTP server for game integration",
-			"key_types": [
-				"GameSenseServer",
-				"GameMetadata",
-				"GameEvent",
-				"EventBinding"
-			],
-			"port": 27301,
-			"framework": "axum 0.8",
-			"endpoints": [
-				"POST /game_metadata",
-				"POST /bind_game_event",
-				"POST /game_event",
-				"GET /game_event"
-			]
-		},
-		"audio": {
-			"path": "src/audio/",
-			"purpose": "Audio mixer and Sonar client",
-			"key_types": ["AudioMixer", "SonarClient", "Channel"],
-			"features_required": ["audio", "sonar"],
-			"channels": ["Game", "Chat", "Media", "Aux", "Mic"]
-		},
-		"profiles": {
-			"path": "src/profiles/",
-			"purpose": "Device configuration persistence",
-			"key_types": [
-				"Profile",
-				"ProfileManager",
-				"KeyboardProfile",
-				"HeadsetProfile"
-			],
-			"storage": "~/.config/ssgg/profiles/"
-		},
-		"config": {
-			"path": "src/config/",
-			"purpose": "TOML configuration management",
-			"key_types": ["Config", "GameSenseConfig", "AudioConfig"],
-			"config_path": "~/.config/ssgg/config.toml"
-		},
-		"validation": {
-			"path": "src/validation.rs",
-			"purpose": "RGB validation framework",
-			"key_types": ["RgbValidator", "ValidationReport", "ValidationResult"]
+			"description": "GameSense HTTP server for game integration",
+			"exports": ["GameMetadata", "GameEvent", "GamesenseServer"],
+			"submodules": ["server", "handlers"],
+			"port": 27301
 		},
 		"performance": {
 			"path": "src/performance.rs",
-			"purpose": "Performance monitoring",
-			"key_types": ["PerformanceManager", "PerformanceStats"]
-		},
-		"device_state": {
-			"path": "src/device_state.rs",
-			"purpose": "Device state tracking for daemon mode",
-			"key_types": [
-				"DeviceStateStore",
-				"DeviceId",
-				"KeyboardState",
-				"HeadsetState"
+			"description": "Real-time performance monitoring and statistics",
+			"exports": [
+				"PerformanceManager",
+				"PerformanceStats",
+				"PerformanceMonitor"
 			]
+		},
+		"validation": {
+			"path": "src/validation.rs",
+			"description": "Resource validation and leak detection",
+			"exports": ["RgbValidator", "ValidationResult"]
+		},
+		"profiles": {
+			"path": "src/profiles/",
+			"description": "Configuration persistence",
+			"exports": ["Profile"],
+			"storagePath": "~/.config/ssgg/profiles/"
+		},
+		"audio": {
+			"path": "src/audio/",
+			"description": "Audio mixing and Sonar integration",
+			"exports": ["AudioMixer", "SonarClient"],
+			"feature": "audio"
+		},
+		"config": {
+			"path": "src/config/",
+			"description": "Configuration management",
+			"exports": ["Config"]
 		},
 		"pollrate": {
 			"path": "src/pollrate.rs",
-			"purpose": "USB poll rate control",
-			"key_types": ["PollRate"],
-			"supported_rates": [125, 250, 500, 1000, 2000, 4000]
+			"description": "USB poll rate control",
+			"supportedRates": [125, 250, 500, 1000, 2000, 4000]
 		},
 		"error": {
 			"path": "src/error.rs",
-			"purpose": "Error handling",
-			"key_types": ["Error", "Result"]
+			"description": "Error types and handling"
+		},
+		"device_state": {
+			"path": "src/device_state.rs",
+			"description": "Daemon state management"
 		}
 	},
-	"dependencies": {
-		"core": [
-			{
-				"name": "hidapi",
-				"version": "2.6.4",
-				"purpose": "USB HID device communication"
-			},
-			{
-				"name": "axum",
-				"version": "0.8",
-				"purpose": "HTTP server for GameSense API"
-			},
-			{
-				"name": "tokio",
-				"version": "1.49",
-				"purpose": "Async runtime"
-			},
-			{
-				"name": "clap",
-				"version": "4.5",
-				"purpose": "CLI argument parsing"
-			},
-			{
-				"name": "serde",
-				"version": "1.0",
-				"purpose": "Serialization/deserialization"
-			},
-			{
-				"name": "serde_json",
-				"version": "1.0",
-				"purpose": "JSON serialization"
-			},
-			{
-				"name": "toml",
-				"version": "0.9",
-				"purpose": "TOML configuration parsing"
-			},
-			{
-				"name": "thiserror",
-				"version": "2.0",
-				"purpose": "Error handling"
-			},
-			{
-				"name": "tracing",
-				"version": "0.1",
-				"purpose": "Structured logging"
-			},
-			{
-				"name": "tracing-subscriber",
-				"version": "0.3",
-				"purpose": "Logging subscriber"
-			}
-		],
-		"optional": [
-			{
-				"name": "libpulse-binding",
-				"version": "2.30.1",
-				"feature": "audio",
-				"purpose": "PulseAudio integration"
-			},
-			{
-				"name": "reqwest",
-				"version": "0.13",
-				"feature": "sonar",
-				"purpose": "HTTP client for Sonar API"
-			}
-		],
-		"utility": [
-			{
-				"name": "directories",
-				"version": "6.0",
-				"purpose": "XDG directory paths"
-			},
-			{
-				"name": "chrono",
-				"version": "0.4",
-				"purpose": "Timestamps for diagnostics"
-			},
-			{
-				"name": "tower-http",
-				"version": "0.6",
-				"purpose": "CORS middleware"
-			},
-			{
-				"name": "nix",
-				"version": "0.30.1",
-				"purpose": "Unix system calls"
-			},
-			{
-				"name": "libc",
-				"version": "0.2",
-				"purpose": "C library bindings"
-			}
-		]
+	"constants": {
+		"STEELSERIES_VENDOR_ID": "0x1038",
+		"KEYBOARD_REPORT_SIZE": 641,
+		"HEADSET_REPORT_SIZE": 65,
+		"MAX_RGB_ZONES": 9,
+		"CACHE_THRESHOLD_MS": 16,
+		"GAMESENSE_DEFAULT_PORT": 27301
 	},
+	"dependencies": [
+		{
+			"name": "axum",
+			"version": "0.8",
+			"purpose": "HTTP server"
+		},
+		{
+			"name": "tokio",
+			"version": "1.49",
+			"purpose": "Async runtime"
+		},
+		{
+			"name": "hidapi",
+			"version": "2.6.4",
+			"purpose": "USB HID communication"
+		},
+		{
+			"name": "clap",
+			"version": "4.5",
+			"purpose": "CLI argument parsing"
+		},
+		{
+			"name": "serde",
+			"version": "1.0",
+			"purpose": "Serialization"
+		},
+		{
+			"name": "toml",
+			"version": "0.9",
+			"purpose": "TOML parsing"
+		},
+		{
+			"name": "tracing",
+			"version": "0.1",
+			"purpose": "Logging"
+		},
+		{
+			"name": "thiserror",
+			"version": "2.0",
+			"purpose": "Error handling"
+		},
+		{
+			"name": "libpulse-binding",
+			"version": "2.30.1",
+			"purpose": "PulseAudio integration",
+			"optional": true,
+			"feature": "audio"
+		},
+		{
+			"name": "reqwest",
+			"version": "0.13",
+			"purpose": "HTTP client",
+			"optional": true,
+			"feature": "sonar"
+		}
+	],
 	"features": {
 		"default": {
-			"enabled": [],
-			"description": "Core RGB + GameSense only"
+			"description": "Minimal features",
+			"includes": []
 		},
 		"audio": {
-			"dependencies": ["libpulse-binding"],
-			"description": "PulseAudio integration"
+			"description": "PulseAudio integration",
+			"dependencies": ["libpulse-binding"]
 		},
 		"sonar": {
+			"description": "SteelSeries Sonar API client",
 			"dependencies": ["reqwest"],
-			"requires": ["audio"],
-			"description": "SteelSeries Sonar HTTP API client"
+			"implies": ["audio"]
 		}
 	},
-	"configuration": {
-		"cargo": {
-			"path": "Cargo.toml",
-			"release_profile": {
-				"strip": true,
-				"lto": "fat",
-				"codegen_units": 1,
-				"panic": "abort",
-				"opt_level": 3,
-				"debug": 0,
-				"overflow_checks": false
-			}
-		},
-		"formatting": {
-			"path": "rustfmt.toml",
-			"indent": 4,
-			"max_width": 100,
-			"edition": "2021"
-		},
-		"system": {
-			"udev_rules": "assets/99-steelseries.rules",
-			"systemd_service": "assets/ssgg.service"
+	"tests": {
+		"total": 66,
+		"modules": {
+			"rgb": 15,
+			"profiles": 10,
+			"performance": 8,
+			"gamesense": 6,
+			"pollrate": 4,
+			"hid_reports": 12,
+			"device_discovery": 8,
+			"validation": 5
+		}
+	},
+	"buildProfiles": {
+		"release": {
+			"strip": true,
+			"lto": "fat",
+			"codegen-units": 1,
+			"panic": "abort",
+			"opt-level": 3,
+			"binarySize": "2-3 MB"
 		}
 	},
 	"documentation": {
-		"user": ["README.md", "CONTRIBUTING.md", "PRD.md"],
-		"developer": ["CLAUDE.md", "TODO.md", "PERFORMANCE_OPTIMIZATIONS.md"],
-		"development": [
-			"docs/development/APEX_PRO_PROTOCOL.md",
-			"docs/development/DEPENDENCY_AUDIT_REPORT.md",
-			"docs/development/KEY_MAPPING_RESEARCH.md",
-			"docs/development/OPTIMIZATION_REPORT.md",
-			"docs/development/PROTOCOL_RESEARCH.md",
-			"docs/development/RGB_CONTROL_ANALYSIS.md",
-			"docs/development/PRD.md"
-		],
-		"planning": [
-			".planning/PROJECT.md",
-			".planning/REQUIREMENTS.md",
-			".planning/ROADMAP.md",
-			".planning/STATE.md"
-		]
+		"CLAUDE.md": "Comprehensive developer guide for AI assistants",
+		"README.md": "User documentation and getting started",
+		"CONTRIBUTING.md": "Contribution guidelines",
+		"PERFORMANCE_OPTIMIZATIONS.md": "Performance findings",
+		"docs/development/OPTIMIZATION_REPORT.md": "Detailed optimization metrics",
+		"docs/development/DEPENDENCY_AUDIT_REPORT.md": "Security audit",
+		"docs/development/PROTOCOL_RESEARCH.md": "USB protocol documentation"
 	},
-	"tests": {
-		"total": 25,
-		"doc_tests": 2,
-		"test_files": ["src/rgb/tests.rs", "src/profiles/tests.rs"],
-		"breakdown": {
-			"rgb": 11,
-			"profiles": 7,
-			"pollrate": 4,
-			"gamesense": 3
-		},
-		"run_commands": [
-			"cargo test",
-			"cargo test --all-features",
-			"cargo test rgb::tests",
-			"cargo test -- --nocapture"
-		]
-	},
-	"constants": {
-		"STEELSERIES_VENDOR_ID": {
-			"value": "0x1038",
-			"location": "lib.rs",
-			"purpose": "USB vendor ID for SteelSeries"
-		},
-		"KEYBOARD_REPORT_SIZE": {
-			"value": 65,
-			"location": "devices/hid_reports.rs",
-			"purpose": "Keyboard HID report size"
-		},
-		"HEADSET_REPORT_SIZE": {
-			"value": 65,
-			"location": "devices/hid_reports.rs",
-			"purpose": "Headset HID report size"
-		},
-		"MAX_RGB_ZONES": {
-			"value": 9,
-			"location": "devices/hid_reports.rs",
-			"purpose": "Maximum RGB zones"
-		},
-		"GAMESENSE_DEFAULT_PORT": {
-			"value": 27301,
-			"location": "gamesense/server.rs",
-			"purpose": "GameSense HTTP server port"
-		},
-		"RGB_CACHE_THRESHOLD": {
-			"value": "16ms",
-			"location": "rgb/mod.rs",
-			"purpose": "RGB effect cache (~60 FPS)"
+	"codeStyle": {
+		"indentation": "4 spaces",
+		"lineLength": "100 characters max",
+		"formatTool": "cargo fmt",
+		"linter": "cargo clippy",
+		"naming": {
+			"functions": "snake_case",
+			"types": "PascalCase",
+			"constants": "SCREAMING_SNAKE_CASE"
 		}
 	},
-	"supported_devices": {
-		"keyboards": [
-			{
-				"name": "Apex Pro",
-				"variants": ["Apex Pro", "Apex Pro TKL", "Apex Pro TKL 2023"],
-				"product_id": "0x1628"
-			},
-			{
-				"name": "Apex 3",
-				"variants": ["Apex 3", "Apex 3 TKL"]
-			},
-			{
-				"name": "Apex 5"
-			},
-			{
-				"name": "Apex 7",
-				"variants": ["Apex 7", "Apex 7 TKL"]
-			}
-		],
-		"headsets": [
-			{
-				"name": "Arctis 1",
-				"variants": ["Arctis 1", "Arctis 1 Wireless"]
-			},
-			{
-				"name": "Arctis 5"
-			},
-			{
-				"name": "Arctis 7",
-				"variants": ["Arctis 7", "Arctis 7 (2019)"]
-			},
-			{
-				"name": "Arctis 9"
-			},
-			{
-				"name": "Arctis Pro",
-				"variants": ["Arctis Pro", "Arctis Pro Wireless"]
-			},
-			{
-				"name": "Arctis Nova Pro",
-				"variants": ["Arctis Nova Pro", "Arctis Nova Pro Wireless"]
-			},
-			{
-				"name": "Arctis Nova",
-				"variants": ["Arctis Nova 5", "Arctis Nova 3", "Arctis Nova 1"]
-			}
-		]
+	"performanceMetrics": {
+		"cpuReduction": "20%",
+		"binarySize": "2-3 MB (release, stripped)",
+		"effectCacheThreshold": "16ms (60 FPS)"
 	},
-	"ci_cd": {
-		"github_actions": [
-			".github/workflows/ci.yml",
-			".github/workflows/rust.yml",
-			".github/workflows/release-arch.yml"
-		],
-		"dependabot": ".github/dependabot.yml"
-	},
-	"stats": {
-		"rust_files": 26,
-		"lines_of_code": 8000,
-		"test_count": 25,
-		"documentation_files": 38,
-		"binary_size": "2-3 MB",
-		"direct_dependencies": 14,
-		"transitive_dependencies": 50
-	},
-	"architecture": {
-		"device_abstraction": {
-			"trait": "Device",
-			"manager": "DeviceManager",
-			"cache_type": "O(1) HashMap lookup",
-			"protocol": "HID 65-byte reports"
-		},
-		"rgb_engine": {
-			"cache_threshold": "16ms",
-			"target_fps": 60,
-			"optimization": "Vec<Color> reuse"
-		},
-		"gamesense_server": {
-			"framework": "axum",
-			"async_runtime": "tokio",
-			"cors": true,
-			"default_port": 27301
-		},
-		"performance": {
-			"release_profile": "LTO + strip + panic=abort",
-			"binary_size": "~2-3 MB",
-			"device_cache": "O(1)",
-			"rgb_cache": "16ms threshold"
-		}
-	},
-	"quick_start": {
-		"installation": [
-			"git clone https://github.com/Ven0m0/steelseriesgg-rs.git",
-			"cd steelseriesgg-rs",
-			"sudo apt install libudev-dev libhidapi-dev libpulseaudio-dev",
-			"cargo build --release --all-features",
-			"./target/release/ssgg devices",
-			"sudo cp assets/99-steelseries.rules /etc/udev/rules.d/",
-			"sudo udevadm control --reload-rules",
-			"cargo install --path . --all-features",
-			"systemctl --user enable --now ssgg.service"
-		],
-		"development": [
-			"cargo fmt",
-			"cargo clippy --all-features",
-			"cargo test",
-			"RUST_LOG=debug cargo run -- devices"
-		],
-		"usage": [
-			"ssgg devices",
-			"ssgg rgb set --color red",
-			"ssgg profile save gaming",
-			"ssgg daemon"
-		]
-	},
-	"index_metadata": {
-		"version": "2.0",
-		"generated": "2026-01-18",
-		"token_reduction": "94%",
-		"original_tokens": 58000,
-		"index_tokens": 3000,
-		"savings_per_session": 55000,
-		"status": "complete"
+	"keyGotchas": [
+		"Animated effects require daemon mode",
+		"Use HidReportBuilder for correct sizes",
+		"Apex Pro TKL 2023 uses Product ID 0x1628 (not 0x1618)",
+		"Feature flag sonar requires audio",
+		"Permissions require udev rules and input group"
+	],
+	"quickCommands": {
+		"build": "cargo build --release",
+		"test": "cargo test --all-features",
+		"listDevices": "RUST_LOG=debug cargo run -- devices",
+		"daemon": "cargo run --release -- daemon",
+		"testRgb": "cargo run -- rgb --color red"
 	}
 }
