@@ -28,3 +28,4 @@ docs/archive/
 # Auto Claude data directory
 .auto-claude/
 repomix-output.xml
+ralph.yml
