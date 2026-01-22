@@ -862,7 +862,7 @@ fn cmd_actuation(manager: &DeviceManager, action: ActuationAction) -> Result<()>
             println!("Setting actuation point to {:.1}mm", mm);
 
             // Validate range
-            if mm < 0.1 || mm > 4.0 {
+            if !(0.1..=4.0).contains(&mm) {
                 return Err(Error::Other(
                     "Actuation point must be between 0.1mm and 4.0mm".to_string(),
                 ));
@@ -1967,11 +1967,10 @@ fn cmd_performance(manager: &DeviceManager, action: PerformanceAction) -> Result
             let mut benchmark_results = HashMap::new();
 
             // Run benchmark on each keyboard
-            for device_info in &keyboards {
+            for &device_info in &keyboards {
                 match manager.open_keyboard(device_info) {
                     Ok(mut keyboard) => {
                         println!("   🔬 Benchmarking: {}", device_info.name);
-
                         // Enable performance optimizations for benchmark
                         keyboard.set_performance_optimization(true);
 
@@ -2631,7 +2630,7 @@ async fn cmd_daemon(mut manager: DeviceManager) -> Result<()> {
                         let mut state = daemon_state.write().await;
                         let mut infos = Vec::new();
 
-                        for (_serial, (_keyboard, controller, info)) in state.keyboards.iter_mut() {
+                        for (_keyboard, controller, info) in state.keyboards.values_mut() {
                             controller.set_effect(keyboard_profile.effect.clone());
                             controller.set_brightness(keyboard_profile.brightness as f32 / 100.0);
                             infos.push(info.clone());
@@ -2705,7 +2704,7 @@ async fn cmd_daemon(mut manager: DeviceManager) -> Result<()> {
                 let computation_start = Instant::now();
 
                 // Update memory usage periodically
-                if frames_processed % 60 == 0 {
+                if frames_processed.is_multiple_of(60) {
                     performance_monitor.update_memory_usage(estimate_memory_usage());
                 }
 
@@ -2714,7 +2713,7 @@ async fn cmd_daemon(mut manager: DeviceManager) -> Result<()> {
                 performance_monitor.record_frame_timing(frame_duration, computation_time);
 
                 // Log performance summary periodically
-                if frames_processed % 300 == 0 {
+                if frames_processed.is_multiple_of(300) {
                     // Every 5 seconds at 60fps
                     tracing::debug!(
                         "RGB Performance: {}",
@@ -2874,7 +2873,7 @@ async fn cmd_daemon(mut manager: DeviceManager) -> Result<()> {
     // Save final device states
     {
         let state = daemon_state.read().await;
-        for (_serial, (_keyboard, controller, info)) in &state.keyboards {
+        for (_keyboard, controller, info) in state.keyboards.values() {
             let device_id = DeviceId::from(info);
             let final_state = KeyboardState {
                 effect: controller.effect().clone(),
@@ -3120,7 +3119,7 @@ async fn cmd_hid_logs(file_logging: bool, device_filter: Option<&str>) -> Result
                 }) {
                     print!("{}", summary);
                     std::io::Write::flush(&mut std::io::stdout())
-                        .map_err(|e| Error::Io(e))?;
+                        .map_err(Error::Io)?;
                 }
             }
             _ = tokio::signal::ctrl_c() => {
@@ -3176,7 +3175,7 @@ fn cmd_test_device(
     // Open device and run validation based on type
     let report = match device_info.device_type {
         DeviceType::Keyboard => {
-            let mut keyboard = manager.open_keyboard(&device_info)?;
+            let mut keyboard = manager.open_keyboard(device_info)?;
             validator.validate_keyboard(&mut *keyboard)
         }
         _ => {

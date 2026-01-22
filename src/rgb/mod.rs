@@ -942,6 +942,7 @@ impl PerKeyEffectEngine {
 pub struct RgbController {
     engine: EffectEngine,
     brightness: f32,
+    scaled_colors: Vec<Color>,
 }
 
 /// Per-key RGB controller for managing individual key lighting.
@@ -1119,6 +1120,7 @@ impl RgbController {
         Self {
             engine: EffectEngine::new(Effect::default(), zone_count),
             brightness: 1.0,
+            scaled_colors: Vec::with_capacity(zone_count),
         }
     }
 
@@ -1160,15 +1162,18 @@ impl RgbController {
     /// Compute current colors with brightness applied.
     /// This method reuses an internal buffer to avoid allocations.
     #[inline]
-    pub fn compute_colors(&mut self) -> Vec<Color> {
+    pub fn compute_colors(&mut self) -> &[Color] {
         let colors = self.engine.compute();
 
         // If brightness is 1.0, we can return the colors directly without scaling
         if (self.brightness - 1.0).abs() < f32::EPSILON {
-            return colors.to_vec();
+            return colors;
         }
 
-        // Apply brightness scaling and return new vector
-        colors.iter().map(|c| c.scale(self.brightness)).collect()
+        // Apply brightness scaling reusing internal buffer
+        self.scaled_colors.clear();
+        self.scaled_colors
+            .extend(colors.iter().map(|c| c.scale(self.brightness)));
+        &self.scaled_colors
     }
 }
