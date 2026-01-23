@@ -11,9 +11,10 @@
 //! - Smart invalidation strategies
 
 use crate::rgb::{Color, Effect, PerKeyEffect};
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// RGB timing metrics for performance monitoring as required by the performance foundation plan.

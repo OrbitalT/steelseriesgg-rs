@@ -9,10 +9,10 @@ pub mod key_mapping;
 pub mod keyboards;
 pub mod zone_mapping;
 
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use crate::{Error, Result, STEELSERIES_VENDOR_ID};

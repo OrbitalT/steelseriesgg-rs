@@ -752,8 +752,10 @@ async fn main() -> Result<()> {
         }
 
         Commands::Fuzz { start, end, delay } => {
-            use steelseries_gg::devices::fuzz::{fuzz_keyboard_protocol, FuzzParams, PayloadPattern};
-            
+            use steelseries_gg::devices::fuzz::{
+                FuzzParams, PayloadPattern, fuzz_keyboard_protocol,
+            };
+
             let manager = DeviceManager::new()?;
             let params = FuzzParams {
                 start_cmd: start,
@@ -761,7 +763,7 @@ async fn main() -> Result<()> {
                 delay_ms: delay,
                 payload_pattern: PayloadPattern::Zeros, // Default to zeros for now
             };
-            
+
             fuzz_keyboard_protocol(&manager, params)?;
         }
     }

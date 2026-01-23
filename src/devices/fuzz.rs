@@ -45,13 +45,19 @@ pub fn fuzz_keyboard_protocol(manager: &DeviceManager, params: FuzzParams) -> Re
             .bold(),
         "Proceed with caution!".red()
     );
-    println!("Target: {} (PID: 0x{:04x})", device_info.name, device_info.product_id);
-    println!("Range: 0x{:02x} - 0x{:02x}", params.start_cmd, params.end_cmd);
+    println!(
+        "Target: {} (PID: 0x{:04x})",
+        device_info.name, device_info.product_id
+    );
+    println!(
+        "Range: 0x{:02x} - 0x{:02x}",
+        params.start_cmd, params.end_cmd
+    );
     println!("Delay: {}ms", params.delay_ms);
 
     // Open device
     let mut keyboard = manager.open_keyboard(device_info)?;
-    
+
     // We need to access the raw HID device to send arbitrary commands.
     // The Keyboard trait might abstracts this away, so we depend on the implementation
     // exposing a way to send raw data or we need to bypass the trait for fuzzing.
@@ -67,7 +73,7 @@ pub fn fuzz_keyboard_protocol(manager: &DeviceManager, params: FuzzParams) -> Re
 
         // Construct packet
         let mut packet = vec![0x00, cmd]; // Report ID 0x00, then Command
-        
+
         // Fill remaining 63 bytes (total 65)
         let payload_len = 63;
         match params.payload_pattern {
@@ -95,13 +101,13 @@ pub fn fuzz_keyboard_protocol(manager: &DeviceManager, params: FuzzParams) -> Re
         // The `receive_raw` usually blocks, so we might need to handle that.
         // For now, we rely on the diagnostics logging which taps into send/receive.
         // But `receive_raw` needs to be called to actually pull data.
-        
+
         // We create a buffer and try to read.
         let mut buf = [0u8; 65];
         // We assume receive_raw has a timeout or is non-blocking enough.
         // If the implementation blocks forever, this fuzzer will hang.
         // Realistically, HID reads usually have a timeout set on the device handle.
-        
+
         match keyboard.receive_raw(&mut buf) {
             Ok(n) => {
                 if n > 0 {

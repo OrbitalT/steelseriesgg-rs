@@ -256,8 +256,8 @@ impl HidDiagnostics {
 
         // Checksum validation
         if let Some(checksum_issue) = self.validate_checksum(data) {
-             // Just log as info/debug for now as we are unsure of the exact algorithm
-             debug!("Checksum analysis: {}", checksum_issue);
+            // Just log as info/debug for now as we are unsure of the exact algorithm
+            debug!("Checksum analysis: {}", checksum_issue);
         }
 
         // Log validation results
@@ -290,7 +290,9 @@ impl HidDiagnostics {
         if data.len() < 2 {
             return 0;
         }
-        data.iter().take(data.len() - 1).fold(0u8, |acc, &x| acc.wrapping_add(x))
+        data.iter()
+            .take(data.len() - 1)
+            .fold(0u8, |acc, &x| acc.wrapping_add(x))
     }
 
     /// Calculate XOR checksum of data excluding the last byte.
@@ -298,7 +300,9 @@ impl HidDiagnostics {
         if data.len() < 2 {
             return 0;
         }
-        data.iter().take(data.len() - 1).fold(0u8, |acc, &x| acc ^ x)
+        data.iter()
+            .take(data.len() - 1)
+            .fold(0u8, |acc, &x| acc ^ x)
     }
 
     /// Validate checksum against common algorithms.
@@ -314,15 +318,23 @@ impl HidDiagnostics {
 
         // Heuristic: If last byte matches a calculated checksum, it's interesting.
         if last_byte == sum {
-            return Some(format!("Last byte (0x{:02x}) matches SUM checksum", last_byte));
+            return Some(format!(
+                "Last byte (0x{:02x}) matches SUM checksum",
+                last_byte
+            ));
         }
         if last_byte == xor {
-            return Some(format!("Last byte (0x{:02x}) matches XOR checksum", last_byte));
+            return Some(format!(
+                "Last byte (0x{:02x}) matches XOR checksum",
+                last_byte
+            ));
         }
-        
+
         // If data is long and last byte is 0, but sum/xor are non-zero, it might be padding instead of checksum
         if last_byte == 0 && (sum != 0 || xor != 0) {
-             return Some("Last byte is 0x00 (likely padding), but non-zero checksums calculated".to_string());
+            return Some(
+                "Last byte is 0x00 (likely padding), but non-zero checksums calculated".to_string(),
+            );
         }
 
         None
@@ -409,12 +421,12 @@ fn average_duration(durations: &[Duration]) -> Duration {
 }
 
 /// Global diagnostic instance for easy access.
-static GLOBAL_DIAGNOSTICS: std::sync::OnceLock<std::sync::Mutex<HidDiagnostics>> =
+static GLOBAL_DIAGNOSTICS: std::sync::OnceLock<parking_lot::Mutex<HidDiagnostics>> =
     std::sync::OnceLock::new();
 
 /// Initialize global diagnostics.
 pub fn init_global_diagnostics(enabled: bool) -> Result<()> {
-    GLOBAL_DIAGNOSTICS.get_or_init(|| std::sync::Mutex::new(HidDiagnostics::new(enabled)));
+    GLOBAL_DIAGNOSTICS.get_or_init(|| parking_lot::Mutex::new(HidDiagnostics::new(enabled)));
 
     if enabled {
         with_global_diagnostics(|diag| diag.enable_file_logging())
@@ -429,8 +441,8 @@ pub fn with_global_diagnostics<F, R>(func: F) -> Option<R>
 where
     F: FnOnce(&mut HidDiagnostics) -> R,
 {
-    GLOBAL_DIAGNOSTICS
-        .get()
-        .and_then(|mutex| mutex.lock().ok())
-        .map(|mut diag| func(&mut diag))
+    GLOBAL_DIAGNOSTICS.get().and_then(|mutex| {
+        let mut diag = mutex.lock();
+        Some(func(&mut diag))
+    })
 }
