@@ -2,6 +2,7 @@
 
 pub mod diagnostics;
 pub mod discovery;
+pub mod fuzz;
 pub mod headsets;
 pub mod hid_reports;
 pub mod key_mapping;

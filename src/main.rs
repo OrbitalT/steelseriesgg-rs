@@ -196,6 +196,22 @@ enum Commands {
         #[arg(short, long)]
         output: Option<String>,
     },
+
+    /// Protocol Fuzzer (Developer Tool)
+    #[command(hide = true)]
+    Fuzz {
+        /// Start command byte
+        #[arg(short, long, default_value = "0x00", value_parser = parse_hex_u8)]
+        start: u8,
+
+        /// End command byte
+        #[arg(short, long, default_value = "0xFF", value_parser = parse_hex_u8)]
+        end: u8,
+
+        /// Delay between commands in ms
+        #[arg(short, long, default_value = "100")]
+        delay: u64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -513,6 +529,11 @@ fn parse_color(s: &str) -> Option<Color> {
     None
 }
 
+fn parse_hex_u8(s: &str) -> std::result::Result<u8, String> {
+    let s = s.trim_start_matches("0x");
+    u8::from_str_radix(s, 16).map_err(|e| format!("Invalid hex value: {}", e))
+}
+
 #[cfg(feature = "audio")]
 fn parse_channel(s: &str) -> Option<Channel> {
     let s_lower = s.to_ascii_lowercase();
@@ -728,6 +749,20 @@ async fn main() -> Result<()> {
         } => {
             let manager = DeviceManager::new()?;
             cmd_verify_performance(&manager, duration, &effect, output).await?;
+        }
+
+        Commands::Fuzz { start, end, delay } => {
+            use steelseries_gg::devices::fuzz::{fuzz_keyboard_protocol, FuzzParams, PayloadPattern};
+            
+            let manager = DeviceManager::new()?;
+            let params = FuzzParams {
+                start_cmd: start,
+                end_cmd: end,
+                delay_ms: delay,
+                payload_pattern: PayloadPattern::Zeros, // Default to zeros for now
+            };
+            
+            fuzz_keyboard_protocol(&manager, params)?;
         }
     }
 
