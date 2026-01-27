@@ -640,11 +640,17 @@ impl Keyboard for GenericKeyboard {
     }
 
     fn set_per_key_effect(&mut self, effect: PerKeyEffect) -> Result<()> {
-        if self.per_key_controller.is_some() {
-            let controller = self.per_key_controller.as_mut().unwrap();
-            controller.set_effect(effect);
-            let key_colors = controller.compute_key_colors().to_vec();
-            self.set_key_colors(&key_colors)?;
+        let key_colors = if let Some(ref mut controller) = self.per_key_controller {
+            controller.set_effect(effect.clone());
+
+            // Apply the effect immediately by getting colors and sending to device
+            Some(controller.compute_key_colors().to_vec())
+        } else {
+            None
+        };
+
+        if let Some(colors) = key_colors {
+            self.set_key_colors(&colors)?;
             self.apply()
         } else {
             // Fallback: convert to zone-based effect if no per-key support
@@ -657,11 +663,17 @@ impl Keyboard for GenericKeyboard {
     }
 
     fn trigger_key_reactive(&mut self, keys: &[KeyId], duration: f32) -> Result<()> {
-        if self.per_key_controller.is_some() {
-            let controller = self.per_key_controller.as_mut().unwrap();
+        let key_colors = if let Some(ref mut controller) = self.per_key_controller {
             controller.trigger_reactive(keys, duration);
-            let key_colors = controller.compute_key_colors().to_vec();
-            self.set_key_colors(&key_colors)?;
+
+            // Apply the updated reactive state
+            Some(controller.compute_key_colors().to_vec())
+        } else {
+            None
+        };
+
+        if let Some(colors) = key_colors {
+            self.set_key_colors(&colors)?;
             self.apply()
         } else {
             // Fallback: simulate reactive effect using zones
@@ -677,11 +689,17 @@ impl Keyboard for GenericKeyboard {
     }
 
     fn apply_per_key_effect_with_brightness(&mut self, brightness: f32) -> Result<()> {
-        if self.per_key_controller.is_some() {
-            let controller = self.per_key_controller.as_mut().unwrap();
+        let key_colors = if let Some(ref mut controller) = self.per_key_controller {
             controller.set_brightness(brightness.clamp(0.0, 1.0));
-            let key_colors = controller.compute_key_colors().to_vec();
-            self.set_key_colors(&key_colors)?;
+
+            // Apply the effect with new brightness
+            Some(controller.compute_key_colors().to_vec())
+        } else {
+            None
+        };
+
+        if let Some(colors) = key_colors {
+            self.set_key_colors(&colors)?;
             self.apply()
         } else {
             // Fallback: apply brightness to zones
