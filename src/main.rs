@@ -2407,7 +2407,8 @@ impl DaemonState {
                         }
 
                         // Store device information
-                        self.headsets.insert(serial.clone(), (headset, info.clone()));
+                        self.headsets
+                            .insert(serial.clone(), (headset, info.clone()));
                         self.device_fingerprints.insert(serial, fingerprint.clone());
 
                         info!("Successfully added headset: {}", info.name);
