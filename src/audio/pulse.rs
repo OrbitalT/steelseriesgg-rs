@@ -34,18 +34,14 @@ pub struct PulseHandler {
 
 impl PulseHandler {
     pub fn new() -> Result<Self> {
-        let mut mainloop =
-            Mainloop::new().ok_or_else(|| Error::Audio("Failed to create mainloop".to_string()))?;
+        let mut mainloop = Mainloop::new().ok_or_else(|| Error::Audio("Failed to create mainloop".to_string()))?;
         let mut context = Context::new(&mainloop, "SteelSeries GG")
             .ok_or_else(|| Error::Audio("Failed to create context".to_string()))?;
 
-        context
-            .connect(None, ContextFlagSet::NOFLAGS, None)
+        context.connect(None, ContextFlagSet::NOFLAGS, None)
             .map_err(|e| Error::Audio(format!("Failed to connect context: {}", e)))?;
 
-        mainloop
-            .start()
-            .map_err(|e| Error::Audio(format!("Failed to start mainloop: {}", e)))?;
+        mainloop.start().map_err(|e| Error::Audio(format!("Failed to start mainloop: {}", e)))?;
 
         // Wait for ready
         mainloop.lock();
@@ -69,46 +65,40 @@ impl PulseHandler {
 
     pub fn get_sink_inputs(&mut self) -> Result<Vec<SinkInput>> {
         let (tx, rx) = mpsc::channel();
-        let tx = std::sync::Mutex::new(tx);
+        let tx = parking_lot::Mutex::new(tx);
 
         self.mainloop.lock();
 
         let introspector = self.context.introspect();
         let _op = introspector.get_sink_input_info_list(move |res| {
-            let tx = tx.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            match res {
-                ListResult::Item(info) => {
-                    let app_name = info
-                        .proplist
-                        .get_str("application.name")
+             let tx = tx.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+             match res {
+                 ListResult::Item(info) => {
+                     let app_name = info.proplist.get_str("application.name")
                         .or_else(|| info.proplist.get_str("application.process.binary"))
                         .map(|s| s.to_string());
 
-                    let media_role = info.proplist.get_str("media.role").map(|s| s.to_string());
+                     let media_role = info.proplist.get_str("media.role").map(|s| s.to_string());
 
-                    let input = SinkInput {
-                        index: info.index,
-                        name: info
-                            .name
-                            .as_ref()
-                            .map(|s| s.to_string())
-                            .unwrap_or_default(),
-                        app_name,
-                        media_role,
-                        channel_map: info.channel_map,
-                        volume: info.volume,
-                        muted: info.mute,
-                    };
+                     let input = SinkInput {
+                         index: info.index,
+                         name: info.name.as_ref().map(|s| s.to_string()).unwrap_or_default(),
+                         app_name,
+                         media_role,
+                         channel_map: info.channel_map,
+                         volume: info.volume,
+                         muted: info.mute,
+                     };
 
-                    let _ = tx.send(Ok(Some(input)));
-                }
-                ListResult::End => {
-                    let _ = tx.send(Ok(None)); // End signal
-                }
-                ListResult::Error => {
-                    let _ = tx.send(Err(Error::Audio("Failed to list sink inputs".to_string())));
-                }
-            }
+                     let _ = tx.send(Ok(Some(input)));
+                 },
+                 ListResult::End => {
+                     let _ = tx.send(Ok(None)); // End signal
+                 },
+                 ListResult::Error => {
+                     let _ = tx.send(Err(Error::Audio("Failed to list sink inputs".to_string())));
+                 }
+             }
         });
 
         self.mainloop.unlock();
@@ -140,21 +130,15 @@ impl PulseHandler {
         let (tx, rx) = mpsc::channel();
 
         self.mainloop.lock();
-        let _op = self.context.introspect().set_sink_input_volume(
-            index,
-            &cv,
-            Some(Box::new(move |success| {
-                let _ = tx.send(success);
-            })),
-        );
+        let _op = self.context.introspect().set_sink_input_volume(index, &cv, Some(Box::new(move |success| {
+            let _ = tx.send(success);
+        })));
         self.mainloop.unlock();
 
-        match rx.recv() {
+        match rx.recv_timeout(std::time::Duration::from_secs(2)) {
             Ok(true) => Ok(()),
             Ok(false) => Err(Error::Audio("Failed to set sink input volume".to_string())),
-            Err(_) => Err(Error::Audio(
-                "Volume setting timed out or failed".to_string(),
-            )),
+            Err(_) => Err(Error::Audio("Volume setting timed out or channel closed".to_string())),
         }
     }
 
@@ -162,19 +146,15 @@ impl PulseHandler {
         let (tx, rx) = mpsc::channel();
 
         self.mainloop.lock();
-        let _op = self.context.introspect().set_sink_input_mute(
-            index,
-            muted,
-            Some(Box::new(move |success| {
-                let _ = tx.send(success);
-            })),
-        );
+        let _op = self.context.introspect().set_sink_input_mute(index, muted, Some(Box::new(move |success| {
+            let _ = tx.send(success);
+        })));
         self.mainloop.unlock();
 
-        match rx.recv() {
+        match rx.recv_timeout(std::time::Duration::from_secs(2)) {
             Ok(true) => Ok(()),
             Ok(false) => Err(Error::Audio("Failed to set sink input mute".to_string())),
-            Err(_) => Err(Error::Audio("Mute setting timed out or failed".to_string())),
+            Err(_) => Err(Error::Audio("Mute setting timed out or channel closed".to_string())),
         }
     }
 }

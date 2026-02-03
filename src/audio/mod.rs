@@ -9,6 +9,8 @@
 pub mod pulse;
 #[cfg(feature = "sonar")]
 pub mod sonar;
+#[cfg(feature = "audio")]
+pub mod pulse;
 
 use serde::{Deserialize, Serialize};
 
@@ -16,6 +18,8 @@ use serde::{Deserialize, Serialize};
 use pulse::PulseHandler;
 #[cfg(feature = "sonar")]
 pub use sonar::{SonarChannel, SonarClient};
+#[cfg(feature = "audio")]
+use pulse::PulseHandler;
 
 // Channel types are used by both audio and sonar features
 #[cfg(any(feature = "audio", feature = "sonar"))]
