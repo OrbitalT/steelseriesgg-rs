@@ -7,6 +7,7 @@
 
 #[cfg(feature = "audio")]
 pub mod pulse;
+
 #[cfg(feature = "sonar")]
 pub mod sonar;
 
@@ -14,20 +15,14 @@ pub mod sonar;
 use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "audio")]
-use std::collections::HashMap;
-
-#[cfg(feature = "audio")]
 use pulse::PulseHandler;
+
 #[cfg(feature = "sonar")]
 pub use sonar::{SonarChannel, SonarClient};
 
 // Channel types are used by both audio and sonar features
 #[cfg(any(feature = "audio", feature = "sonar"))]
 /// Audio channel identifier.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub enum Channel {
-    /// Master volume (affects all channels)
-    Master,
     /// Game audio
     Game,
     /// Voice chat audio
@@ -499,5 +494,16 @@ impl AudioRouter {
 impl Default for AudioRouter {
     fn default() -> Self {
         Self::new()
+#[cfg(feature = "audio")]
+pub mod pulse;
+#[cfg(feature = "sonar")]
+pub mod sonar;
+
+use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "audio")]
+use pulse::PulseHandler;
+#[cfg(feature = "sonar")]
+pub use sonar::{SonarChannel, SonarClient};
     }
 }
