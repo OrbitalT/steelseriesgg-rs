@@ -12,13 +12,14 @@ pub mod pulse;
 pub mod sonar;
 
 #[cfg(feature = "audio")]
-use crate::{Error, Result};
-use serde::{Deserialize, Serialize};
-#[cfg(feature = "audio")]
 use pulse::PulseHandler;
 
 #[cfg(feature = "sonar")]
 pub use sonar::{SonarChannel, SonarClient};
+
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use crate::{Error, Result};
 
 // Channel types are used by both audio and sonar features
 #[cfg(any(feature = "audio", feature = "sonar"))]
