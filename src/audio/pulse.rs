@@ -75,7 +75,7 @@ impl PulseHandler {
 
         let introspector = self.context.introspect();
         let _op = introspector.get_sink_input_info_list(move |res| {
-            let tx = tx.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let tx = tx.lock();
             match res {
                 ListResult::Item(info) => {
                     let app_name = info
@@ -152,7 +152,9 @@ impl PulseHandler {
         match rx.recv_timeout(std::time::Duration::from_secs(2)) {
             Ok(true) => Ok(()),
             Ok(false) => Err(Error::Audio("Failed to set sink input volume".to_string())),
-            Err(_) => Err(Error::Audio("Volume setting timed out or channel closed".to_string())),
+            Err(_) => Err(Error::Audio(
+                "Volume setting timed out or channel closed".to_string(),
+            )),
         }
     }
 
@@ -172,7 +174,9 @@ impl PulseHandler {
         match rx.recv_timeout(std::time::Duration::from_secs(2)) {
             Ok(true) => Ok(()),
             Ok(false) => Err(Error::Audio("Failed to set sink input mute".to_string())),
-            Err(_) => Err(Error::Audio("Mute setting timed out or channel closed".to_string())),
+            Err(_) => Err(Error::Audio(
+                "Mute setting timed out or channel closed".to_string(),
+            )),
         }
     }
 }
