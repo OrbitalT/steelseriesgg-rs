@@ -540,13 +540,6 @@ impl SonarClient {
                         return Err(Error::Audio(format!("GET request failed: {}", e)));
                     }
 
-                    if attempt == MAX_RETRIES {
-                        return Err(Error::Audio(format!(
-                            "GET request failed after {} attempts: {}",
-                            MAX_RETRIES + 1,
-                            e
-                        )));
-                    }
                     // Continue to next attempt if transient error and retries remaining
                 }
             }
