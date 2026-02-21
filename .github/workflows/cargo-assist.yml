@@ -18,4 +18,5 @@ jobs:
       - name: Run Cargo Assist
         uses: MarcoIeni/cargo-assist@v0.1
         with:
+          clippy_allow_dirty: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
