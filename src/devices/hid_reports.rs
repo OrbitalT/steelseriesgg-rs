@@ -414,9 +414,17 @@ pub struct PerKeyRgbCommand {
 /// Addressing mode for per-key RGB commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PerKeyAddressingMode {
-    /// Direct matrix addressing (row, col)
+    /// Direct matrix addressing: [row] [col] [R] [G] [B] (5 bytes per key)
     Matrix,
-    /// Logical key addressing (requires key mapping)
+    /// Logical key addressing: [key_id] [R] [G] [B] (4 bytes per key)
+    ///
+    /// In this mode we deliberately reuse [`KeyAddress`] for convenience:
+    /// the logical [`KeyId`] is stored in `address.col`, and `address.row`
+    /// must always be set to `0` and is ignored by the device firmware.
+    /// This convention keeps the public API small while still allowing both
+    /// matrix and logical addressing to share the same map key type, and
+    /// avoids ambiguity with [`PerKeyAddressingMode::Matrix`], where both
+    /// `row` and `col` are meaningful.
     Logical,
 }
 
@@ -567,19 +575,72 @@ impl HidCommand for PerKeyRgbCommand {
         buffer[offset] = self.key_colors.len().min(255) as u8;
         offset += 1;
 
-        // Per-key data format (Standard SteelSeries Per-Key Protocol)
-        // [Row] [Col] [R] [G] [B]
-        for (address, color) in &self.key_colors {
-            if offset + 5 > report_size {
-                break; // Safety break
-            }
+        // Batch ID flag (bit 7 of addressing mode) and fragment info
+        let mut flags = 0u8;
+        if self.batch_id.is_some() {
+            flags |= 0x80; // MSB indicates batch operation
+        }
+        if self.fragment.is_some() {
+            flags |= 0x40; // Bit 6 indicates fragmentation
+        }
+        data[offset] = flags;
+        offset += 1;
 
-            buffer[offset] = address.row;
-            buffer[offset + 1] = address.col;
-            buffer[offset + 2] = color.r;
-            buffer[offset + 3] = color.g;
-            buffer[offset + 4] = color.b;
-            offset += 5;
+        // Batch ID (if present) - next 4 bytes
+        if let Some(batch_id) = self.batch_id {
+            data[offset..offset + 4].copy_from_slice(&batch_id.to_le_bytes());
+            offset += 4;
+        }
+
+        // Fragment info (if present) - next 2 bytes
+        if let Some((current, total)) = self.fragment {
+            data[offset] = current;
+            data[offset + 1] = total;
+            offset += 2;
+        }
+
+        // Key count (for parsing/validation)
+        data[offset] = self.key_colors.len().min(255) as u8;
+        offset += 1;
+
+        match self.addressing_mode {
+            PerKeyAddressingMode::Matrix => {
+                // Matrix addressing: [row] [col] [R] [G] [B]
+                for (address, color) in &self.key_colors {
+                    if offset + 5 > report_size {
+                        break; // Prevent buffer overflow
+                    }
+
+                    data[offset] = address.row;
+                    data[offset + 1] = address.col;
+                    data[offset + 2] = color.r;
+                    data[offset + 3] = color.g;
+                    data[offset + 4] = color.b;
+                    offset += 5;
+                }
+            }
+            PerKeyAddressingMode::Logical => {
+                // Logical addressing: [key_id] [R] [G] [B]
+                // Note: key_id is stored in address.col
+                for (address, color) in &self.key_colors {
+                    if offset + 4 > report_size {
+                        break; // Prevent buffer overflow
+                    }
+
+                    // In logical mode, row must be unused/zero; enforce this invariant.
+                    assert_eq!(
+                        address.row,
+                        0,
+                        "PerKeyAddressingMode::Logical expects KeyAddress.row == 0, got {}",
+                        address.row
+                    );
+                    data[offset] = address.col;
+                    data[offset + 1] = color.r;
+                    data[offset + 2] = color.g;
+                    data[offset + 3] = color.b;
+                    offset += 4;
+                }
+            }
         }
 
         Ok(report_size)
@@ -594,14 +655,16 @@ impl HidCommand for PerKeyRgbCommand {
 
         // Validate matrix addressing bounds
         for address in self.key_colors.keys() {
-            if address.row >= Self::MAX_ROWS || address.col >= Self::MAX_COLS {
-                return Err(Error::DeviceCommunication(format!(
-                    "Key address ({}, {}) exceeds maximum matrix size ({}x{})",
-                    address.row,
-                    address.col,
-                    Self::MAX_ROWS,
-                    Self::MAX_COLS
-                )));
+            if self.addressing_mode == PerKeyAddressingMode::Matrix {
+                if address.row >= Self::MAX_ROWS || address.col >= Self::MAX_COLS {
+                    return Err(Error::DeviceCommunication(format!(
+                        "Key address ({}, {}) exceeds maximum matrix size ({}x{})",
+                        address.row,
+                        address.col,
+                        Self::MAX_ROWS,
+                        Self::MAX_COLS
+                    )));
+                }
             }
         }
 
