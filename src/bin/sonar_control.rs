@@ -122,11 +122,7 @@ async fn main() -> Result<()> {
                 print_channel_volumes(&streamer.streaming);
             }
         }
-        Command::SetVolume {
-            channel,
-            value,
-            mode,
-        } => {
+        Command::SetVolume { channel, value, mode } => {
             let sonar_channel = channel.into();
             match mode {
                 CliMode::Classic => {
@@ -136,22 +132,13 @@ async fn main() -> Result<()> {
                     client.set_channel_volume(sonar_channel, value).await?;
                 }
                 CliMode::Monitoring => {
-                    client
-                        .set_monitoring_channel_volume(sonar_channel, value)
-                        .await?;
+                    client.set_monitoring_channel_volume(sonar_channel, value).await?;
                 }
                 CliMode::Streaming => {
-                    client
-                        .set_streaming_channel_volume(sonar_channel, value)
-                        .await?;
+                    client.set_streaming_channel_volume(sonar_channel, value).await?;
                 }
             }
-            println!(
-                "Set {} volume for {:?} to {:.2}",
-                mode_str(mode),
-                channel,
-                value
-            );
+            println!("Set {} volume for {:?} to {:.2}", mode_str(mode), channel, value);
         }
         Command::GetVolume { channel, mode } => {
             let sonar_channel = channel.into();

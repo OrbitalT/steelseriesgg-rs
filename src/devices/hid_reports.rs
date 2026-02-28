@@ -477,9 +477,6 @@ impl PerKeyRgbCommand {
         fragments
     }
 
-impl PerKeyRgbCommand {
-    /// Create a new per-key RGB command.
-    /// Note: Duplicate  removed, consolidated into the main implementation block.
     /// Create a command for a single key.
     pub fn single_key(address: KeyAddress, color: Color) -> Self {
         let mut command = Self::new(PerKeyAddressingMode::Matrix);
@@ -566,35 +563,7 @@ impl HidCommand for PerKeyRgbCommand {
         buffer[offset] = self.command_code() as u8;
         offset += 1;
 
-        // Addressing mode
-        buffer[offset] = self.addressing_mode as u8;
-        offset += 1;
-
-        // Batch ID flag (bit 7 of addressing mode) and fragment info
-        let mut flags = 0u8;
-        if self.batch_id.is_some() {
-            flags |= 0x80; // MSB indicates batch operation
-        }
-        if self.fragment.is_some() {
-            flags |= 0x40; // Bit 6 indicates fragmentation
-        }
-        buffer[offset] = flags;
-        offset += 1;
-
-        // Batch ID (if present) - next 4 bytes
-        if let Some(batch_id) = self.batch_id {
-            buffer[offset..offset + 4].copy_from_slice(&batch_id.to_le_bytes());
-            offset += 4;
-        }
-
-        // Fragment info (if present) - next 2 bytes
-        if let Some((current, total)) = self.fragment {
-            buffer[offset] = current;
-            buffer[offset + 1] = total;
-            offset += 2;
-        }
-
-        // Key count (for parsing/validation)
+        // Key count
         buffer[offset] = self.key_colors.len().min(255) as u8;
         offset += 1;
 
@@ -1497,15 +1466,13 @@ mod tests {
         let size = builder.build_report(cmd, &mut buffer).unwrap();
         assert_eq!(size, KEYBOARD_REPORT_SIZE);
         assert_eq!(buffer[0], 0x00); // Report ID
-        assert_eq!(buffer[1], 0x2A); // Per-key RGB command
-        assert_eq!(buffer[2], 0x00); // Matrix addressing mode
-        assert_eq!(buffer[3], 0x00); // Flags
-        assert_eq!(buffer[4], 0x01); // Key count
-        assert_eq!(buffer[5], 3); // Row
-        assert_eq!(buffer[6], 1); // Col
-        assert_eq!(buffer[7], 255); // Red
-        assert_eq!(buffer[8], 0); // Green
-        assert_eq!(buffer[9], 0); // Blue
+        assert_eq!(buffer[1], 0x23); // Per-key RGB command
+        assert_eq!(buffer[2], 0x01); // Key count
+        assert_eq!(buffer[3], 3); // Row
+        assert_eq!(buffer[4], 1); // Col
+        assert_eq!(buffer[5], 255); // Red
+        assert_eq!(buffer[6], 0); // Green
+        assert_eq!(buffer[7], 0); // Blue
     }
 
     #[test]
