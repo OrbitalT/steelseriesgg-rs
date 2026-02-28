@@ -239,9 +239,10 @@ impl GenericKeyboard {
             write_padded_report(&device, data, 65, true)
         };
 
-        match &result {
-            Ok(_) => debug!("HID report sent successfully"),
-            Err(e) => debug!("HID report failed: {:?}", e),
+        if result.is_ok() {
+            debug!("HID report sent successfully");
+        } else if let Err(e) = &result {
+            debug!("HID report failed: {:?}", e);
         }
 
         result
