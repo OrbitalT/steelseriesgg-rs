@@ -16,7 +16,6 @@
   "platform": "github",
   "forkProcessing": "enabled",
   "onboarding": true,
-  "onboardingNoDeps": "enabled",
   "automerge": true,
   "automergeType": "branch",
   "ignoreTests": true,
