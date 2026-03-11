@@ -37,6 +37,12 @@
   "npm": {
     "enabled": true
   },
+  "docker-compose": {
+    "enabled": true
+  },
+  "dockerfile": {
+    "enabled": true
+  },
   "packageRules": [
     {
       "description": "Automerge all stable (non-0.x) updates via branch",
