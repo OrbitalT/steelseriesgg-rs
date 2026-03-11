@@ -7,9 +7,12 @@
     "abandonments:recommended",
     "group:all",
     "packages:linters",
-    "schedule:weekly"
+    "schedule:weekly",
+    "customManagers:biomeVersions",
+    ":dependencyDashboard"
   ],
   "enabled": true,
+  "dependencyDashboard": true,
   "automerge": true,
   "automergeType": "branch",
   "ignoreTests": true,
