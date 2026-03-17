@@ -31,6 +31,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - name: Install tools
         run: |
+          uv tool install git+https://github.com/oraios/serena
           bun add -g @biomejs/biome @ast-grep/cli &
           # zagi — agent-optimized git wrapper
           curl -fsL https://raw.githubusercontent.com/mattzcarey/zagi/main/install.sh | bash &
