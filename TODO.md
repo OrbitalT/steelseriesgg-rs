@@ -1,11 +1,13 @@
 # TODOs
 
-## 1
+## 1:
 
-Fix the hidapi dependency
+Check out https://github.com/Sharper-Flow/Open-G-Hub to see if the logic could be useful for this project aswell.
 
-```toml
-# HID communication
-# Use linux-native-basic-udev to avoid pkg-config dependency on libudev-dev
-hidapi = { version = "2.6", default-features = false, features = ["linux-native-basic-udev"] }
-```
+## 2:
+
+Fix the issues: https://github.com/Ven0m0/steelseriesgg-rs/issues/6 https://github.com/Ven0m0/steelseriesgg-rs/issues/120 
+
+## 3: 
+
+Continue working on the steelseries apex pro tkl 2023 protocol and rgb Implementation
