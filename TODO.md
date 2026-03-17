@@ -25,3 +25,5 @@ Continue working on the steelseries apex pro tkl 2023 protocol and rgb Implement
 - https://github.com/Mark7888/steelseries-sonar-py
 - https://github.com/Dymstro/nova-chatmix-linux
 - https://github.com/not-jan/apex-tux
+- https://github.com/Gibtnix/MSIKLM
+- https://github.com/stephenlacy/msi-keyboard
