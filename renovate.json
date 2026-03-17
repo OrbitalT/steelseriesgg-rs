@@ -8,16 +8,29 @@
     "group:all",
     "packages:linters",
     "schedule:weekly",
-    "customManagers:biomeVersions"
+    "customManagers:biomeVersions",
+    ":dependencyDashboard",
+    ":automergeBranch",
+    ":automergeMinor",
+    ":combinePatchMinorReleases",
+    ":ignoreModulesAndTests",
+    ":rebaseStalePrs",
+    "docker:enableMajor",
+    "preview:dockerCompose",
+    ":enablePreCommit"
   ],
   "enabled": true,
+  "dependencyDashboard": true,
+  "forkProcessing": "enabled",
   "automerge": true,
   "automergeType": "branch",
+  "rebaseWhen": "auto",
   "ignoreTests": true,
   "pinDigests": false,
   "separateMajorMinor": false,
   "separateMinorPatch": false,
   "ignoreUnstable": true,
+  "prCreation": "immediate",
   "prConcurrentLimit": 10,
   "respectLatest": true,
   "abandonmentThreshold": "2 years",
@@ -35,6 +48,20 @@
   "npm": {
     "enabled": true
   },
+  "docker-compose": {
+    "enabled": true
+  },
+  "dockerfile": {
+    "enabled": true
+  },
+  "cargo": {
+    "rangeStrategy": "update-lockfile"
+  },
+  "postUpdateOptions": [
+    "yarnDedupeHighest",
+    "gomodTidy",
+    "pnpmDedupe"
+  ],
   "packageRules": [
     {
       "description": "Automerge all stable (non-0.x) updates via branch",
@@ -85,6 +112,7 @@
         "/(^|/)(workflow-templates|\\.(?:github|gitea|forgejo)/(?:workflows|actions))/.+\\.ya?ml$/",
         "/(^|/)action\\.ya?ml$/"
       ],
+      "datasourceTemplate": "github-tags",
       "matchStrings": [
         "# renovate: datasource=(?<datasource>[a-zA-Z0-9-._]+?) depName=(?<depName>[^\\s]+?)(?: (?:lookupName|packageName)=(?<packageName>[^\\s]+?))?(?: versioning=(?<versioning>[^\\s]+?))?(?: extractVersion=(?<extractVersion>[^\\s]+?))?(?: registryUrl=(?<registryUrl>[^\\s]+?))?\\s+[A-Za-z0-9_]+?_VERSION\\s*:\\s*[\"']?(?<currentValue>.+?)[\"']?\\s"
       ]
