@@ -1,6 +1,5 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "endpoint": "https://developer.mend.io/github/",
   "extends": [
     "config:recommended",
     ":configMigration",
@@ -19,13 +18,9 @@
   ],
   "automerge": true,
   "forkProcessing": "enabled",
+  "reconfigureBranch": "renovate/reconfigure",
   "ignoreTests": true,
   "abandonmentThreshold": "2 years",
-  "lockFileMaintenance": {
-    "enabled": true,
-    "automerge": true,
-    "extends": []
-  },
   "labels": ["dependencies"],
   "timezone": "Europe/Berlin",
   "cargo": {
