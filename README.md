@@ -34,7 +34,7 @@ systemctl --user enable --now ssgg.service
 ## Supported Devices **WIP**
 
 ### Keyboards
-- Apex Pro / Apex Pro TKL / Apex Pro TKL 2023
+- Apex Pro / Apex Pro TKL / [Apex Pro TKL 2023](https://steelseries.com/gaming-keyboards/apex-pro-2023)
 - Apex 3 / Apex 3 TKL
 - Apex 5
 - Apex 7 / Apex 7 TKL
