@@ -230,13 +230,6 @@ pub enum PerKeyEffect {
     /// Custom per-key colors.
     Custom { key_colors: HashMap<KeyId, Color> },
 
-    /// Row/column based effects.
-    RowColumn {
-        row_colors: Vec<Color>,    // Colors for each row
-        column_colors: Vec<Color>, // Colors for each column
-        blend_mode: BlendMode,     // How to combine row/col colors
-    },
-
     /// Gaming-specific zones (WASD, arrow keys, etc.).
     GameZone {
         wasd_color: Color,
@@ -596,29 +589,32 @@ impl PerKeyEffectEngine {
         });
     }
 
-    /// Static helper to get key position without borrowing self
-    fn get_key_position_static(key_mapping: &KeyMapping, key_id: KeyId) -> Option<(f32, f32)> {
-        let address = key_mapping.get_key_address(key_id)?;
-        let x = address.col as f32 / (key_mapping.matrix_cols.saturating_sub(1).max(1)) as f32;
-        let y = address.row as f32 / (key_mapping.matrix_rows.saturating_sub(1).max(1)) as f32;
-        Some((x, y))
-    }
-
-    /// Static helper to get key distance without borrowing self
-    fn key_distance_static(key_mapping: &KeyMapping, key1: KeyId, key2: KeyId) -> f32 {
-        if let (Some((x1, y1)), Some((x2, y2))) = (
-            Self::get_key_position_static(key_mapping, key1),
-            Self::get_key_position_static(key_mapping, key2),
-        ) {
-            ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt()
-        } else {
-            f32::INFINITY
-        }
-    }
-
     /// Static helper to get keyboard center without borrowing self
     fn get_keyboard_center_static() -> (f32, f32) {
         (0.5, 0.5) // Center of normalized coordinate space
+    }
+
+    /// Static helper to get key position from HID code.
+    /// Returns normalized coordinates (0.0-1.0) based on HID code.
+    fn get_key_position_static(hid_code: u8) -> (f32, f32) {
+        // Map HID code to approximate keyboard position
+        let row = match hid_code {
+            0x04..=0x1D => 0, // A-Z keys (top letter row)
+            0x1E..=0x27 => 1, // Number row
+            0x28..=0x2F => 2, // Enter, shift row
+            0x30..=0x35 => 3, // Bottom row (space, etc.)
+            0x36..=0x3F => 4, // Function keys area
+            _ => 2,           // Default to middle
+        };
+        let col = (hid_code % 10) as f32 / 10.0;
+        (col, row as f32 / 5.0)
+    }
+
+    /// Static helper to calculate distance between two keys by their HID codes.
+    fn key_distance_static(hid1: u8, hid2: u8) -> f32 {
+        let (x1, y1) = Self::get_key_position_static(hid1);
+        let (x2, y2) = Self::get_key_position_static(hid2);
+        ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt()
     }
 
     /// Compute colors for all keys.
@@ -713,7 +709,8 @@ impl PerKeyEffectEngine {
             } => {
                 if colors.is_empty() {
                     *color = Color::BLACK;
-                } else if let Some((x, y)) = Self::get_key_position_static(key_mapping, key) {
+                } else if let Some(address) = key_mapping.get_key_address(key) {
+                    let (x, y) = Self::get_key_position_static(address.hid_code);
                     let wave_pos = match direction {
                         KeyWaveDirection::LeftToRight => x,
                         KeyWaveDirection::RightToLeft => 1.0 - x,
@@ -749,7 +746,8 @@ impl PerKeyEffectEngine {
                 center_keys,
             } => {
                 if center_keys.is_empty() {
-                    if let Some((x, y)) = Self::get_key_position_static(key_mapping, key) {
+                    if let Some(address) = key_mapping.get_key_address(key) {
+                        let (x, y) = Self::get_key_position_static(address.hid_code);
                         let (cx, cy) = Self::get_keyboard_center_static();
                         let distance = ((x - cx).powi(2) + (y - cy).powi(2)).sqrt();
                         let ripple_pos = (elapsed_secs * speed - distance * 3.0).rem_euclid(2.0);
@@ -764,8 +762,10 @@ impl PerKeyEffectEngine {
                     }
                 } else {
                     let mut max_brightness = 0.0f32;
+                    let key_hid = key_mapping.get_key_address(key).map(|a| a.hid_code).unwrap_or(0);
                     for &center_key in center_keys {
-                        let distance = Self::key_distance_static(key_mapping, key, center_key);
+                        let center_hid = key_mapping.get_key_address(center_key).map(|a| a.hid_code).unwrap_or(0);
+                        let distance = Self::key_distance_static(key_hid, center_hid);
                         if distance != f32::INFINITY {
                             let ripple_pos = (elapsed_secs * speed - distance * 5.0).rem_euclid(2.0);
                             let brightness = if ripple_pos > 0.0 && ripple_pos < 1.0 {
@@ -794,7 +794,8 @@ impl PerKeyEffectEngine {
             }
 
             PerKeyEffect::Gradient { start, end, direction } => {
-                if let Some((x, y)) = Self::get_key_position_static(key_mapping, key) {
+                if let Some(address) = key_mapping.get_key_address(key) {
+                    let (x, y) = Self::get_key_position_static(address.hid_code);
                     let t = match direction {
                         GradientDirection::Horizontal => x,
                         GradientDirection::Vertical => y,
@@ -812,36 +813,6 @@ impl PerKeyEffectEngine {
 
             PerKeyEffect::Custom { key_colors } => {
                 *color = key_colors.get(&key).copied().unwrap_or(Color::BLACK);
-            }
-
-            PerKeyEffect::RowColumn {
-                row_colors,
-                column_colors,
-                blend_mode,
-            } => {
-                if let Some(address) = key_mapping.get_key_address(key) {
-                    let row_color = row_colors.get(address.row as usize).copied().unwrap_or(Color::BLACK);
-                    let col_color = column_colors.get(address.col as usize).copied().unwrap_or(Color::BLACK);
-
-                    *color = match blend_mode {
-                        BlendMode::Average => Color::blend(row_color, col_color, 0.5),
-                        BlendMode::Add => {
-                            let r = (row_color.r as u16 + col_color.r as u16).min(255) as u8;
-                            let g = (row_color.g as u16 + col_color.g as u16).min(255) as u8;
-                            let b = (row_color.b as u16 + col_color.b as u16).min(255) as u8;
-                            Color::new(r, g, b)
-                        }
-                        BlendMode::Multiply => {
-                            let r = ((row_color.r as u16 * col_color.r as u16) / 255) as u8;
-                            let g = ((row_color.g as u16 * col_color.g as u16) / 255) as u8;
-                            let b = ((row_color.b as u16 * col_color.b as u16) / 255) as u8;
-                            Color::new(r, g, b)
-                        }
-                        BlendMode::Overlay => row_color,
-                    };
-                } else {
-                    *color = Color::BLACK;
-                }
             }
 
             PerKeyEffect::GameZone {

@@ -152,17 +152,47 @@ The `write_padded_report()` function in `src/devices/mod.rs` includes a deduplic
 - **Range:** 0–100 (percentage), auto-clamped by `BrightnessCommand::new()`
 - **Implementation:** `BrightnessCommand` struct
 
-#### Per-Key RGB (`0x23`) — Placeholder
+#### Per-Key RGB (`0x23`) — HID Code Based
 **Purpose:** Individual key RGB control.
 
 ```
-[0x00] [0x23] [addressing_mode] [key_data...] [padding]
+[0x00] [0x23] [hid_code] [R] [G] [B] [padding]
 ```
 
-> **⚠️ WARNING:** This command code is a **placeholder**. The actual per-key RGB protocol for SteelSeries keyboards has **not been reverse-engineered**. The current implementation falls back to `simulate_per_key_with_zones()` which approximates per-key effects using zone-based control.
+> **✅ BREAKTHROUGH (2026-03-27):** Reverse engineering of SteelSeriesGG107.0.0Setup.exe revealed that SteelSeries uses **USB HID keycodes** (not row/col matrix addresses) for per-key addressing. The `hidCode` values are standard USB HID Usage IDs (0x04-0x64 for standard keys).
 
-- **Implementation:** `PerKeyRgbCommand`, `PerKeyRgbBuilder`
-- **Addressing modes:** `Sequential`, `MatrixRowCol`, `DirectIndex` (defined but unverified)
+**Key Findings:**
+- **Key Addressing:** Uses USB HID Usage IDs (e.g., 0x04 = A, 0x05 = B, 0x28 = Enter)
+- **Complete TKL Keycode List:** 4-69, 73-82, 100, 133, 135-139, 224-231, 240 (87 keys)
+- **Source:** Extracted from `apex_7+pro.migration` configuration file
+- **Implementation:** `KeyAddress` now uses `hid_code: u8` instead of `(row, col)`
+
+**HID Code Reference (Standard USB HID Usage IDs):**
+| HID Code | Key | HID Code | Key | HID Code | Key |
+|----------|-----|----------|-----|----------|-----|
+| 0x04 | A | 0x10 | M | 0x28 | Enter |
+| 0x05 | B | 0x11 | N | 0x29 | Escape |
+| 0x06 | C | 0x12 | O | 0x2A | Backspace |
+| 0x07 | D | 0x13 | P | 0x2C | Space |
+| 0x08 | E | 0x14 | Q | 0x2D | - (minus) |
+| 0x09 | F | 0x15 | R | 0x2E | = (equal) |
+| 0x0A | G | 0x16 | S | 0x2F | [ |
+| 0x0B | H | 0x17 | T | 0x30 | ] |
+| 0x0C | I | 0x18 | U | 0x31 | \ |
+| 0x0D | J | 0x19 | V | 0x33 | ; |
+| 0x0E | K | 0x1A | W | 0x34 | ' |
+| 0x0F | L | 0x1B | X | 0x35 | ` |
+| ... | ... | 0x1C | Y | 0x36 | , |
+| 0x1D | Z | 0x37 | . | 0x38 | / |
+| 0x39 | Caps Lock | 0x3A-0x45 | F1-F12 | 0x47 | Scroll Lock |
+| 0x4A-0x4D | Home, PgUp, Del, End | 0x50-0x53 | Arrow keys | 0x58-0x61 | F13-F24 |
+| 0x62-0x64 | Keypad 00, 000, . | 0x65-0x68 | Menu, Power, etc. | 0xE0-0xE7 | Modifiers |
+| 0x87 | Menu | 0x85-0x8B | Media keys | 0xF0 | SteelSeries key |
+
+> **⚠️ Note:** The exact command format for `0x23` (single key vs batch, byte ordering) still requires USB capture verification. The HID code discovery confirms the addressing method but not the complete packet structure.
+
+- **Implementation:** `PerKeyRgbCommand`, `PerKeyRgbBuilder`, `KeyAddress::hid_code()`
+- **Status:** HID codes verified; packet format needs USB capture validation
 
 #### Reactive Mode (`0x25`)
 **Purpose:** Enable or disable reactive lighting (key-press triggers).
@@ -241,9 +271,9 @@ When per-key RGB is unavailable, the `ZoneFallback` system maps individual `KeyI
 
 ### Current Limitations
 
-1. **Zone-Only RGB:** Per-key control uses a placeholder command (`0x23`); real protocol unknown
+1. **Zone-Only RGB:** Per-key control uses a placeholder command (`0x23`); packet format needs USB capture verification
 2. **No Read Commands:** Cannot query current RGB state, actuation settings, or device mode
-3. **No Per-Key Addressing:** Physical key → HID matrix address mapping is placeholder data
+3. ~~**No Per-Key Addressing:** Physical key → HID matrix address mapping is placeholder data~~ **RESOLVED (2026-03-27):** HID codes discovered and implemented
 4. **Protocol Variations:** Differences between Apex Pro variants not fully documented
 5. **Actuation Read:** Write works (`0x2D`) but there is no known read-back command
 

@@ -165,8 +165,8 @@ impl Keyboard for Apex3Tkl {
         self.inner.clear_per_key_rgb().await
     }
 
-    async fn set_key_region(&mut self, start_row: u8, start_col: u8, rows: u8, cols: u8, color: Color) -> Result<()> {
-        self.inner.set_key_region(start_row, start_col, rows, cols, color).await
+    async fn set_key_region(&mut self, start_hid: u8, count: u8, color: Color) -> Result<()> {
+        self.inner.set_key_region(start_hid, count, color).await
     }
 
     fn get_zone_mapping(&self) -> Option<&ZoneMapping> {

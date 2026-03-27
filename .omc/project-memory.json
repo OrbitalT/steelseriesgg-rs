@@ -1,0 +1,279 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1774591902413,
+  "projectRoot": "C:\\Users\\Ven0m0\\project\\steelseriesgg-rs",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Rust",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "Cargo.toml"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "axum",
+        "version": null,
+        "category": "backend"
+      }
+    ],
+    "packageManager": "cargo",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "cargo build",
+    "testCommand": "cargo test",
+    "lintCommand": "cargo clippy",
+    "devCommand": "cargo run",
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "assets",
+      "docs",
+      "src",
+      "tests"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "assets": {
+      "path": "assets",
+      "purpose": "Static assets",
+      "fileCount": 2,
+      "lastAccessed": 1774591902405,
+      "keyFiles": [
+        "99-steelseries.rules",
+        "ssgg.service"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 0,
+      "lastAccessed": 1774591902405,
+      "keyFiles": []
+    },
+    "mock_udev": {
+      "path": "mock_udev",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1774591902405,
+      "keyFiles": [
+        "mock_udev.c",
+        "mock_udev.o"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 8,
+      "lastAccessed": 1774591902406,
+      "keyFiles": [
+        "device_state.rs",
+        "diagnostics_export.rs",
+        "error.rs",
+        "lib.rs",
+        "main.rs"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 6,
+      "lastAccessed": 1774591902406,
+      "keyFiles": [
+        "cors_security.rs",
+        "device_readback.rs",
+        "device_response.sh",
+        "security_diagnostics.rs",
+        "test_rgb.sh"
+      ]
+    },
+    "mock_udev\\lib": {
+      "path": "mock_udev\\lib",
+      "purpose": "Library code",
+      "fileCount": 1,
+      "lastAccessed": 1774591902407,
+      "keyFiles": [
+        "libudev.a"
+      ]
+    },
+    "src\\bin": {
+      "path": "src\\bin",
+      "purpose": "Executable scripts",
+      "fileCount": 5,
+      "lastAccessed": 1774591902407,
+      "keyFiles": [
+        "benchmark_fragment.rs",
+        "benchmark_rgb_alloc.rs",
+        "discover_actuation.rs"
+      ]
+    },
+    "src\\config": {
+      "path": "src\\config",
+      "purpose": "Configuration files",
+      "fileCount": 1,
+      "lastAccessed": 1774591902408,
+      "keyFiles": [
+        "mod.rs"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "PLAN.md",
+      "accessCount": 9,
+      "lastAccessed": 1774611649228,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 4,
+      "lastAccessed": 1774600600618,
+      "type": "directory"
+    },
+    {
+      "path": "docs\\development\\KEY_MAPPING_RESEARCH.md",
+      "accessCount": 3,
+      "lastAccessed": 1774611380443,
+      "type": "file"
+    },
+    {
+      "path": "AGENTS.md",
+      "accessCount": 2,
+      "lastAccessed": 1774597957345,
+      "type": "file"
+    },
+    {
+      "path": "src\\devices\\key_mapping.rs",
+      "accessCount": 2,
+      "lastAccessed": 1774600567153,
+      "type": "file"
+    },
+    {
+      "path": "src\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1774597811181,
+      "type": "file"
+    },
+    {
+      "path": "docs\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1774597812245,
+      "type": "file"
+    },
+    {
+      "path": "tests\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1774597821917,
+      "type": "file"
+    },
+    {
+      "path": "assets\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1774597828324,
+      "type": "file"
+    },
+    {
+      "path": "mock_udev\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1774597834704,
+      "type": "file"
+    },
+    {
+      "path": "src\\devices\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1774597858448,
+      "type": "file"
+    },
+    {
+      "path": "src\\rgb\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1774597867217,
+      "type": "file"
+    },
+    {
+      "path": "src\\gamesense\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1774597878500,
+      "type": "file"
+    },
+    {
+      "path": "src\\profiles\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1774597887197,
+      "type": "file"
+    },
+    {
+      "path": "src\\config\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1774597892751,
+      "type": "file"
+    },
+    {
+      "path": "src\\audio\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1774597901994,
+      "type": "file"
+    },
+    {
+      "path": "src\\bin\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1774597913357,
+      "type": "file"
+    },
+    {
+      "path": "docs\\development\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1774597920192,
+      "type": "file"
+    },
+    {
+      "path": "src\\devices\\keyboards\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1774597938758,
+      "type": "file"
+    },
+    {
+      "path": "src\\devices\\headsets\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1774597947062,
+      "type": "file"
+    },
+    {
+      "path": "src\\devices\\zone_mapping.rs",
+      "accessCount": 1,
+      "lastAccessed": 1774598031667,
+      "type": "file"
+    },
+    {
+      "path": "TODO.md",
+      "accessCount": 1,
+      "lastAccessed": 1774611566032,
+      "type": "file"
+    },
+    {
+      "path": "HANDOFF.md",
+      "accessCount": 1,
+      "lastAccessed": 1774611599196,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

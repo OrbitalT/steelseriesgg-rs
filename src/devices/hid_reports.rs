@@ -440,43 +440,43 @@ pub struct PerKeyRgbCommand {
 /// Addressing mode for per-key RGB commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PerKeyAddressingMode {
-    /// Direct matrix addressing: [row] [col] [R] [G] [B] (5 bytes per key)
+    /// HID code addressing: [hid_code] [R] [G] [B] (4 bytes per key)
+    /// Uses standard USB HID Usage IDs for key identification.
+    /// This is the primary addressing mode for SteelSeries keyboards.
+    HidCode,
+    /// Legacy matrix row/column addressing (deprecated).
+    /// Use HidCode instead - SteelSeries uses HID codes, not matrix coordinates.
+    #[deprecated(note = "Use PerKeyAddressingMode::HidCode instead")]
     Matrix,
-    /// Logical key addressing: [key_id] [R] [G] [B] (4 bytes per key)
-    ///
-    /// In this mode we deliberately reuse [`KeyAddress`] for convenience:
-    /// the logical [`KeyId`] is stored in `address.col`, and `address.row`
-    /// must always be set to `0` and is ignored by the device firmware.
-    /// This convention keeps the public API small while still allowing both
-    /// matrix and logical addressing to share the same map key type, and
-    /// avoids ambiguity with [`PerKeyAddressingMode::Matrix`], where both
-    /// `row` and `col` are meaningful.
+    /// Legacy logical key ID addressing (deprecated).
+    /// Use HidCode instead - SteelSeries uses HID codes.
+    #[deprecated(note = "Use PerKeyAddressingMode::HidCode instead")]
     Logical,
 }
 
 impl PerKeyRgbCommand {
     /// Maximum keys per report to fit within 64-byte payload limit
     /// Header: Cmd (1) + Count (1) = 2 bytes
-    /// Key Data: Row (1) + Col (1) + R (1) + G (1) + B (1) = 5 bytes
-    /// Max Keys: (64 - 2) / 5 = 12
-    pub const MAX_KEYS_PER_REPORT: usize = 12;
+    /// Key Data: HID code (1) + R (1) + G (1) + B (1) = 4 bytes
+    /// Max Keys: (64 - 2) / 4 = 15
+    pub const MAX_KEYS_PER_REPORT: usize = 15;
 
     /// Maximum matrix dimensions
     pub const MAX_ROWS: u8 = 32;
     pub const MAX_COLS: u8 = 32;
 
-    /// Create a new per-key RGB command with default settings.
-    pub fn new(addressing_mode: PerKeyAddressingMode) -> Self {
+    /// Create a new per-key RGB command with HID code addressing.
+    pub fn new(_addressing_mode: PerKeyAddressingMode) -> Self {
         Self {
             key_colors: HashMap::new(),
-            addressing_mode,
+            addressing_mode: PerKeyAddressingMode::HidCode,
         }
     }
 
     /// Create a new per-key RGB command with batch ID for complex operations.
     /// Note: Batch ID is no longer used in serialization but kept for API compatibility.
-    pub fn new_with_batch(addressing_mode: PerKeyAddressingMode, _batch_id: u32) -> Self {
-        Self::new(addressing_mode)
+    pub fn new_with_batch(_addressing_mode: PerKeyAddressingMode, _batch_id: u32) -> Self {
+        Self::new(PerKeyAddressingMode::HidCode)
     }
 
     /// Check if this command needs fragmentation due to size limits.
@@ -519,14 +519,14 @@ impl PerKeyRgbCommand {
 
     /// Create a command for a single key.
     pub fn single_key(address: KeyAddress, color: Color) -> Self {
-        let mut command = Self::new(PerKeyAddressingMode::Matrix);
+        let mut command = Self::new(PerKeyAddressingMode::HidCode);
         command.set_key_color(address, color);
         command
     }
 
     /// Create a command from logical key IDs using a key mapping.
     pub fn from_logical_keys(key_colors: HashMap<KeyId, Color>, key_mapping: &KeyMapping) -> Result<Self> {
-        let mut command = Self::new(PerKeyAddressingMode::Logical);
+        let mut command = Self::new(PerKeyAddressingMode::HidCode);
 
         for (key_id, color) in key_colors {
             if let Some(address) = key_mapping.get_key_address(key_id) {
@@ -608,35 +608,29 @@ impl HidCommand for PerKeyRgbCommand {
         offset += 1;
 
         match self.addressing_mode {
-            PerKeyAddressingMode::Matrix => {
-                // Matrix addressing: [row] [col] [R] [G] [B]
-                for (address, color) in &self.key_colors {
-                    if offset + 5 > report_size {
-                        break;
-                    }
-
-                    buffer[offset] = address.row;
-                    buffer[offset + 1] = address.col;
-                    buffer[offset + 2] = color.r;
-                    buffer[offset + 3] = color.g;
-                    buffer[offset + 4] = color.b;
-                    offset += 5;
-                }
-            }
-            PerKeyAddressingMode::Logical => {
-                // Logical addressing: [key_id] [R] [G] [B]
-                // key_id is stored in address.col
+            PerKeyAddressingMode::HidCode => {
+                // HID code addressing: [hid_code] [R] [G] [B]
                 for (address, color) in &self.key_colors {
                     if offset + 4 > report_size {
                         break;
                     }
 
-                    assert_eq!(
-                        address.row, 0,
-                        "PerKeyAddressingMode::Logical expects KeyAddress.row == 0, got {}",
-                        address.row
-                    );
-                    buffer[offset] = address.col;
+                    buffer[offset] = address.hid_code;
+                    buffer[offset + 1] = color.r;
+                    buffer[offset + 2] = color.g;
+                    buffer[offset + 3] = color.b;
+                    offset += 4;
+                }
+            }
+            #[allow(deprecated)]
+            PerKeyAddressingMode::Matrix | PerKeyAddressingMode::Logical => {
+                // Deprecated modes - treat as HidCode
+                for (address, color) in &self.key_colors {
+                    if offset + 4 > report_size {
+                        break;
+                    }
+
+                    buffer[offset] = address.hid_code;
                     buffer[offset + 1] = color.r;
                     buffer[offset + 2] = color.g;
                     buffer[offset + 3] = color.b;
@@ -655,17 +649,12 @@ impl HidCommand for PerKeyRgbCommand {
             ));
         }
 
-        // Validate matrix addressing bounds
+        // Validate HID code bounds (valid range: 0x04-0xF0)
         for address in self.key_colors.keys() {
-            if self.addressing_mode == PerKeyAddressingMode::Matrix
-                && (address.row >= Self::MAX_ROWS || address.col >= Self::MAX_COLS)
-            {
+            if address.hid_code < 0x04 || address.hid_code > 0xF0 {
                 return Err(Error::DeviceCommunication(format!(
-                    "Key address ({}, {}) exceeds maximum matrix size ({}x{})",
-                    address.row,
-                    address.col,
-                    Self::MAX_ROWS,
-                    Self::MAX_COLS
+                    "HID code 0x{:02X} is outside valid range (0x04-0xF0)",
+                    address.hid_code
                 )));
             }
         }
@@ -685,14 +674,7 @@ impl HidCommand for PerKeyRgbCommand {
     }
 
     fn description(&self) -> String {
-        match self.addressing_mode {
-            PerKeyAddressingMode::Matrix => {
-                format!("Set {} keys via matrix addressing", self.key_colors.len())
-            }
-            PerKeyAddressingMode::Logical => {
-                format!("Set {} keys via logical addressing", self.key_colors.len())
-            }
-        }
+        format!("Set {} keys via HID code addressing", self.key_colors.len())
     }
 }
 
@@ -853,7 +835,7 @@ impl PerKeyRgbBuilder {
     /// Create a builder with logical addressing support.
     pub fn with_key_mapping(key_mapping: KeyMapping) -> Self {
         Self {
-            addressing_mode: PerKeyAddressingMode::Logical,
+            addressing_mode: PerKeyAddressingMode::HidCode,
             key_colors: HashMap::new(),
             key_mapping: Some(key_mapping),
         }
@@ -925,11 +907,9 @@ impl PerKeyRgbBuilder {
     }
 
     /// Set a region of keys to the same color.
-    pub fn set_region(&mut self, start_row: u8, start_col: u8, rows: u8, cols: u8, color: Color) -> &mut Self {
-        for r in start_row..(start_row + rows) {
-            for c in start_col..(start_col + cols) {
-                self.key_colors.insert(KeyAddress::new(r, c), color);
-            }
+    pub fn set_region(&mut self, start_hid: u8, count: u8, color: Color) -> &mut Self {
+        for hid_code in start_hid..(start_hid + count) {
+            self.key_colors.insert(KeyAddress::new(hid_code), color);
         }
         self
     }
@@ -1634,14 +1614,14 @@ mod tests {
     #[test]
     fn test_per_key_rgb_command() {
         // Test single key command
-        let addr = KeyAddress::new(3, 1);
+        let addr = KeyAddress::new(0x04); // HID code for 'a' key
         let color = Color::RED;
         let cmd = PerKeyRgbCommand::single_key(addr, color);
 
         assert_eq!(cmd.key_count(), 1);
         assert_eq!(cmd.get_key_color(addr), Some(color));
         assert!(!cmd.is_empty());
-        assert_eq!(cmd.addressing_mode, PerKeyAddressingMode::Matrix);
+        assert_eq!(cmd.addressing_mode, PerKeyAddressingMode::HidCode);
 
         // Test validation
         assert!(cmd.validate().is_ok());
@@ -1654,42 +1634,41 @@ mod tests {
         assert_eq!(buffer[0], 0x00); // Report ID
         assert_eq!(buffer[1], 0x23); // Per-key RGB command
         assert_eq!(buffer[2], 0x01); // Key count
-        assert_eq!(buffer[3], 3); // Row
-        assert_eq!(buffer[4], 1); // Col
-        assert_eq!(buffer[5], 255); // Red
-        assert_eq!(buffer[6], 0); // Green
-        assert_eq!(buffer[7], 0); // Blue
+        assert_eq!(buffer[3], 0x04); // HID code
+        assert_eq!(buffer[4], 255); // Red
+        assert_eq!(buffer[5], 0); // Green
+        assert_eq!(buffer[6], 0); // Blue
     }
 
     #[test]
     fn test_per_key_rgb_builder() {
-        let mut builder = PerKeyRgbBuilder::new(PerKeyAddressingMode::Matrix);
+        let mut builder = PerKeyRgbBuilder::new(PerKeyAddressingMode::HidCode);
 
         // Initially empty
         assert!(builder.is_empty());
         assert_eq!(builder.key_count(), 0);
 
         // Add keys
-        builder.add_key_matrix(KeyAddress::new(1, 1), Color::RED);
-        builder.add_key_matrix(KeyAddress::new(1, 2), Color::GREEN);
-        builder.add_key_matrix(KeyAddress::new(1, 3), Color::BLUE);
+        builder.add_key_matrix(KeyAddress::new(0x04), Color::RED);
+        builder.add_key_matrix(KeyAddress::new(0x05), Color::GREEN);
+        builder.add_key_matrix(KeyAddress::new(0x06), Color::BLUE);
 
         assert_eq!(builder.key_count(), 3);
         assert!(!builder.is_empty());
 
         // Add batch
-        let addresses = vec![KeyAddress::new(2, 1), KeyAddress::new(2, 2), KeyAddress::new(2, 3)];
+        let addresses = vec![KeyAddress::new(0x07), KeyAddress::new(0x08), KeyAddress::new(0x09)];
         builder.add_keys_batch(&addresses, Color::WHITE);
         assert_eq!(builder.key_count(), 6);
 
-        // Set region
-        builder.set_region(0, 0, 2, 2, Color::CYAN);
+        // Set region (start_hid, count, color)
+        builder.set_region(0x10, 4, Color::CYAN);
         assert!(builder.key_count() >= 6); // At least original + region keys
 
         // Build final command
         let cmd = builder.build();
         assert!(cmd.key_count() >= 6);
-        assert_eq!(cmd.addressing_mode, PerKeyAddressingMode::Matrix);
+        assert_eq!(cmd.addressing_mode, PerKeyAddressingMode::HidCode);
         assert!(cmd.validate().is_ok());
     }
 
@@ -1721,47 +1700,52 @@ mod tests {
     #[test]
     fn test_per_key_rgb_validation() {
         // Empty command should fail
-        let empty_cmd = PerKeyRgbCommand::new(PerKeyAddressingMode::Matrix);
+        let empty_cmd = PerKeyRgbCommand::new(PerKeyAddressingMode::HidCode);
         assert!(empty_cmd.validate().is_err());
 
-        // Valid command should pass
-        let mut valid_cmd = PerKeyRgbCommand::new(PerKeyAddressingMode::Matrix);
-        valid_cmd.set_key_color(KeyAddress::new(0, 0), Color::RED);
+        // Valid command should pass (HID code 0x04 = 'a' key)
+        let mut valid_cmd = PerKeyRgbCommand::new(PerKeyAddressingMode::HidCode);
+        valid_cmd.set_key_color(KeyAddress::new(0x04), Color::RED);
         assert!(valid_cmd.validate().is_ok());
 
-        // Address out of bounds should fail
-        let mut invalid_cmd = PerKeyRgbCommand::new(PerKeyAddressingMode::Matrix);
-        invalid_cmd.set_key_color(KeyAddress::new(32, 0), Color::RED); // Row 32 too high
-        assert!(invalid_cmd.validate().is_err());
-
         // Too many keys should fail
-        let mut oversize_cmd = PerKeyRgbCommand::new(PerKeyAddressingMode::Matrix);
+        let mut oversize_cmd = PerKeyRgbCommand::new(PerKeyAddressingMode::HidCode);
         for i in 0..20 {
             // 20 keys * 5 bytes = 100 bytes > 64 byte limit
-            oversize_cmd.set_key_color(KeyAddress::new(i, 0), Color::RED);
+            oversize_cmd.set_key_color(KeyAddress::new(i + 0x04), Color::RED);
         }
         assert!(oversize_cmd.validate().is_err());
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_per_key_addressing_modes() {
+        // Matrix and Logical are deprecated variants that still exist
+        // but are separate from HidCode
         let matrix_mode = PerKeyAddressingMode::Matrix;
         let logical_mode = PerKeyAddressingMode::Logical;
+        let hid_mode = PerKeyAddressingMode::HidCode;
 
+        // All modes should be different (deprecated variants are separate)
+        assert_ne!(matrix_mode, hid_mode);
+        assert_ne!(logical_mode, hid_mode);
         assert_ne!(matrix_mode, logical_mode);
 
+        // Commands created with deprecated modes are converted to HidCode
+        // (the deprecated modes are no longer supported)
         let cmd_matrix = PerKeyRgbCommand::new(matrix_mode);
         let cmd_logical = PerKeyRgbCommand::new(logical_mode);
 
-        assert_eq!(cmd_matrix.addressing_mode, matrix_mode);
-        assert_eq!(cmd_logical.addressing_mode, logical_mode);
+        // The addressing mode is always HidCode regardless of input
+        assert_eq!(cmd_matrix.addressing_mode, hid_mode);
+        assert_eq!(cmd_logical.addressing_mode, hid_mode);
     }
 
     #[test]
     fn test_per_key_rgb_manipulation() {
-        let mut cmd = PerKeyRgbCommand::new(PerKeyAddressingMode::Matrix);
-        let addr1 = KeyAddress::new(1, 1);
-        let addr2 = KeyAddress::new(1, 2);
+        let mut cmd = PerKeyRgbCommand::new(PerKeyAddressingMode::HidCode);
+        let addr1 = KeyAddress::new(0x04); // HID code for 'a'
+        let addr2 = KeyAddress::new(0x05); // HID code for 'b'
 
         // Add keys
         cmd.set_key_color(addr1, Color::RED);

@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+#[cfg(unix)]
 use std::fs::OpenOptions;
 #[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
@@ -146,6 +147,7 @@ impl ProfileManager {
 
     /// Create a test profile manager with a specific directory.
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn with_dir(dir: PathBuf) -> Self {
         Self {
             profiles: HashMap::new(),

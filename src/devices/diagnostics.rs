@@ -1,5 +1,6 @@
 //! HID communication diagnostics and analysis tools.
 
+#[cfg(unix)]
 use rustix::process::getuid;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -172,12 +173,12 @@ impl HidDiagnostics {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent).map_err(Error::Io)?;
             }
-            Ok(OpenOptions::new()
+            OpenOptions::new()
                 .write(true)
                 .create(true)
                 .truncate(true)
                 .open(path)
-                .map_err(Error::Io)?)
+                .map_err(Error::Io)
         }
     }
 

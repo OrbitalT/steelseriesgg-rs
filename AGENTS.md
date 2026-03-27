@@ -1,4 +1,4 @@
-<!-- Generated: 2026-03-26 | Updated: 2026-03-26 -->
+<!-- Generated: 2026-03-26 | Updated: 2026-03-27 -->
 
 # steelseriesgg-rs
 

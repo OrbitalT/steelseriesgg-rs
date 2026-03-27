@@ -1,9 +1,9 @@
 ---
 goal: Turn the current backlog findings into a prioritized implementation plan.
 date_created: 2026-03-17
-last_updated: 2026-03-26
-last_reviewed: 2026-03-26
-status: In Progress
+last_updated: 2026-03-27
+last_reviewed: 2026-03-27
+status: In Progress — blocked on key matrix RE research
 source: TODO.md
 ---
 
@@ -352,7 +352,55 @@ cargo clippy --all-targets --locked -- -D warnings
 cargo test --locked
 ```
 
-## 11. Deferred research tracks
+## 11. Phase 6: Key Matrix Reverse Engineering (NEW — 2026-03-27)
+
+### Context
+
+A reverse-engineering session was run on `SteelSeriesGG107.exe` (at `C:\Users\Ven0m0\Downloads\`) to extract real HID key matrix addresses for the Apex Pro TKL 2023 (PID `0x1628`). The session ended before results were produced. This is now a blocking dependency for Phase 3.
+
+### Current state
+
+All 87 `KeyId` → `KeyAddress` mappings in `src/devices/key_mapping.rs` are **placeholder data**. The `KeyMappingDatabase` for `ApexProTkl2023` uses an estimated 6×17 matrix with guessed row/col values. The code falls back to `simulate_per_key_with_zones()` at runtime.
+
+See `docs/development/KEY_MAPPING_RESEARCH.md` for the full status per key.
+
+### Objective
+
+Populate `KeyMappingDatabase` with verified `KeyAddress(row, col)` values for the Apex Pro TKL 2023, enabling real per-key RGB instead of the zone-based fallback.
+
+### Research methods (in order of preference)
+
+1. **Binary RE** — inspect `SteelSeriesGG107.exe` for key address lookup tables or HID report builders
+2. **USB capture** — capture live HID traffic while SteelSeries GG sets per-key colors; decode byte positions
+3. **Community sources** — `https://github.com/AstroSnail/apexctl` and `https://github.com/FrankGrimm/apex7tkl_linux` may contain partial mappings
+
+### Primary files
+
+- `src/devices/key_mapping.rs` — update `KeyMappingDatabase::new()` with verified addresses
+- `docs/development/KEY_MAPPING_RESEARCH.md` — update status per key as verified
+
+### Implementation tasks
+
+- Verify `C:\Users\Ven0m0\Downloads\SteelSeriesGG107.exe` is still available
+- Extract row/col addresses for all 87 keys (or the subset present on TKL layout)
+- Replace placeholder `KeyAddress::new(row, col)` calls with verified values
+- Remove or update the `⚠️ PLACEHOLDER` warnings in `KEY_MAPPING_RESEARCH.md`
+- Confirm `simulate_per_key_with_zones()` fallback is no longer triggered
+
+### Success criteria
+
+- At least the alpha-numeric block and modifier keys have verified addresses
+- `cargo build --locked --features experimental-apex-2023` passes
+- `cargo test --locked --features experimental-apex-2023` passes
+- `KEY_MAPPING_RESEARCH.md` status is updated to reflect verified vs. still-placeholder keys
+
+### Complexity rating
+
+⭐⭐⭐ High — depends on RE outcome; implementation itself is straightforward once addresses are known
+
+---
+
+## 12. Deferred research tracks
 
 These remain useful, but they should not outrank the implementation priorities above:
 
@@ -365,7 +413,7 @@ These remain useful, but they should not outrank the implementation priorities a
 
 This research should support the active backlog items rather than expand the scope on its own.
 
-## 12. Completion criteria
+## 13. Completion criteria
 
 The backlog should be considered meaningfully advanced when:
 
@@ -375,13 +423,13 @@ The backlog should be considered meaningfully advanced when:
 - issue `#6` has either a verified fix or current evidence that it is stale
 - any refactor work begins only after the correctness and reliability fixes above are stable
 
-## 13. Suggested next move
+## 14. Suggested next move
 
 If only one follow-up task is taken next, start with issue `#120`.
 
 It has the clearest user impact, the smallest likely implementation surface, and the strongest evidence that a local fail-fast fix in the audio path will improve the current codebase immediately.
 
-## 14. Phase Dependencies
+## 15. Phase Dependencies
 
 ```
 Phase 1 (Audio Hang) ─────────────────────────────────┐
@@ -408,7 +456,7 @@ Phase 4 (Issue #6 Arch) ──────────────────�
 | 2 | None | Independent documentation |
 | 1 | None | Highest priority, start immediately |
 
-## 15. Quick Wins (< 30 minutes each)
+## 16. Quick Wins (< 30 minutes each)
 
 These can be done immediately without blocking other work:
 
@@ -439,7 +487,7 @@ These can be done immediately without blocking other work:
 **File:** `PLAN.md`
 **Task:** Add note that Issue #6 may be stale, needs reproduction attempt
 
-## 16. Effort Estimates
+## 17. Effort Estimates
 
 | Phase | Complexity | Estimated Time | Confidence |
 |-------|------------|----------------|------------|
@@ -448,5 +496,6 @@ These can be done immediately without blocking other work:
 | 3 | Medium | 3-5 hours | Medium (needs hardware testing) |
 | 4 | Unknown | 2-8 hours | Low (may be stale) |
 | 5 | High | 8-16 hours | Medium (large refactor) |
+| 6 | High | 4-16 hours | Low (depends on RE outcome) |
 
-**Total Estimated:** 16-35 hours (if all phases completed)
+**Total Estimated:** 20-51 hours (if all phases completed)

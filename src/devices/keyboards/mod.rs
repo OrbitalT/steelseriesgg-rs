@@ -71,8 +71,8 @@ pub trait Keyboard: Device {
     /// Set all keys to black (turn off per-key RGB).
     async fn clear_per_key_rgb(&mut self) -> Result<()>;
 
-    /// Set a region of keys to the same color using matrix coordinates.
-    async fn set_key_region(&mut self, start_row: u8, start_col: u8, rows: u8, cols: u8, color: Color) -> Result<()>;
+    /// Set a region of keys to the same color using HID codes.
+    async fn set_key_region(&mut self, start_hid: u8, count: u8, color: Color) -> Result<()>;
 
     // === Zone-based RGB Fallback ===
 
@@ -458,7 +458,7 @@ impl Keyboard for GenericKeyboard {
             Error::DeviceCommunication("Per-key RGB not supported - no key mapping available".to_string())
         })?;
 
-        let mut builder = PerKeyRgbBuilder::new(super::hid_reports::PerKeyAddressingMode::Matrix);
+        let mut builder = PerKeyRgbBuilder::new(super::hid_reports::PerKeyAddressingMode::HidCode);
         for (key_id, color) in key_colors {
             if let Some(address) = mapping.get_key_address(*key_id) {
                 builder.add_key_matrix(address, *color);
@@ -491,7 +491,7 @@ impl Keyboard for GenericKeyboard {
             return Err(Error::DeviceCommunication("No key colors provided".to_string()));
         }
 
-        let mut builder = PerKeyRgbBuilder::new(super::hid_reports::PerKeyAddressingMode::Matrix);
+        let mut builder = PerKeyRgbBuilder::new(super::hid_reports::PerKeyAddressingMode::HidCode);
 
         for (address, color) in key_colors {
             builder.add_key_matrix(*address, *color);
@@ -517,12 +517,10 @@ impl Keyboard for GenericKeyboard {
                 Ok(())
             }
         } else {
-            let mut builder = PerKeyRgbBuilder::new(super::hid_reports::PerKeyAddressingMode::Matrix);
+            let mut builder = PerKeyRgbBuilder::new(super::hid_reports::PerKeyAddressingMode::HidCode);
 
-            for row in 0..6 {
-                for col in 0..17 {
-                    builder.add_key_matrix(KeyAddress::new(row, col), Color::BLACK);
-                }
+            for hid_code in 0..120 {
+                builder.add_key_matrix(KeyAddress::new(hid_code), Color::BLACK);
             }
 
             let command = builder.build();
@@ -532,9 +530,9 @@ impl Keyboard for GenericKeyboard {
         }
     }
 
-    async fn set_key_region(&mut self, start_row: u8, start_col: u8, rows: u8, cols: u8, color: Color) -> Result<()> {
-        let mut builder = PerKeyRgbBuilder::new(super::hid_reports::PerKeyAddressingMode::Matrix);
-        builder.set_region(start_row, start_col, rows, cols, color);
+    async fn set_key_region(&mut self, start_hid: u8, count: u8, color: Color) -> Result<()> {
+        let mut builder = PerKeyRgbBuilder::new(super::hid_reports::PerKeyAddressingMode::HidCode);
+        builder.set_region(start_hid, count, color);
 
         if builder.is_empty() {
             return Err(Error::DeviceCommunication(
@@ -902,7 +900,7 @@ mod tests {
 
             let command = builder.build();
             assert_eq!(command.key_count(), 3);
-            assert_eq!(command.addressing_mode, PerKeyAddressingMode::Logical);
+            assert_eq!(command.addressing_mode, PerKeyAddressingMode::HidCode);
 
             assert!(command.validate().is_ok());
         }
@@ -918,6 +916,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_per_key_addressing_modes() {
         assert_ne!(PerKeyAddressingMode::Matrix, PerKeyAddressingMode::Logical);
 
@@ -933,16 +932,17 @@ mod tests {
 
     #[test]
     fn test_key_address_bounds() {
-        let addr = KeyAddress::new(5, 16);
-        assert_eq!(addr.row, 5);
-        assert_eq!(addr.col, 16);
+        // KeyAddress now uses HID codes instead of row/col
+        let addr = KeyAddress::new(30); // HID code 30 (1 key)
+        assert_eq!(addr.hid_code, 30);
 
-        let mut command = PerKeyRgbCommand::new(PerKeyAddressingMode::Matrix);
+        let mut command = PerKeyRgbCommand::new(PerKeyAddressingMode::HidCode);
 
-        command.set_key_color(KeyAddress::new(5, 16), Color::RED);
+        command.set_key_color(KeyAddress::new(30), Color::RED);
         assert!(command.validate().is_ok());
 
-        command.set_key_color(KeyAddress::new(32, 0), Color::BLUE);
+        // HID code 0 is invalid (not a standard USB HID keycode)
+        command.set_key_color(KeyAddress::new(0), Color::BLUE);
         assert!(command.validate().is_err());
     }
 

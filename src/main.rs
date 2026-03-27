@@ -281,16 +281,12 @@ enum PerKeyAction {
         keys: String,
     },
 
-    /// Set a rectangular region of keys to the same color using matrix coordinates
+    /// Set a range of keys to the same color using HID codes
     SetRegion {
-        /// Starting row (0-based)
-        start_row: u8,
-        /// Starting column (0-based)
-        start_col: u8,
-        /// Number of rows
-        rows: u8,
-        /// Number of columns
-        cols: u8,
+        /// Starting HID code (0x00-0xFF)
+        start_hid: u8,
+        /// Number of keys to set
+        count: u8,
         /// Color as hex (e.g., FF0000) or name (red, green, blue, etc.)
         color: String,
     },
@@ -298,12 +294,10 @@ enum PerKeyAction {
     /// Turn off all per-key RGB (set all keys to black)
     Clear,
 
-    /// Test individual key matrix positions (direct addressing)
+    /// Test individual key by HID code (direct addressing)
     TestMatrix {
-        /// Row number (0-based)
-        row: u8,
-        /// Column number (0-based)
-        col: u8,
+        /// HID code (0x00-0xFF)
+        hid_code: u8,
         /// Color as hex (e.g., FF0000) or name (red, green, blue, etc.)
         color: String,
     },
@@ -992,24 +986,18 @@ async fn cmd_per_key_rgb(keyboard: &mut Box<dyn Keyboard>, action: PerKeyAction)
         }
 
         PerKeyAction::SetRegion {
-            start_row,
-            start_col,
-            rows,
-            cols,
+            start_hid,
+            count,
             color,
         } => {
             let color = parse_color(&color).ok_or_else(|| Error::Other(format!("Invalid color: {}", color)))?;
 
             println!(
-                "Setting region ({},{}) to ({},{}) to color {}",
-                start_row,
-                start_col,
-                start_row + rows - 1,
-                start_col + cols - 1,
-                color
+                "Setting {} keys starting from HID code 0x{:02X} to color {}",
+                count, start_hid, color
             );
 
-            keyboard.set_key_region(start_row, start_col, rows, cols, color).await?;
+            keyboard.set_key_region(start_hid, count, color).await?;
             keyboard.apply().await?;
             println!("Done!");
         }
@@ -1021,14 +1009,14 @@ async fn cmd_per_key_rgb(keyboard: &mut Box<dyn Keyboard>, action: PerKeyAction)
             println!("Done!");
         }
 
-        PerKeyAction::TestMatrix { row, col, color } => {
+        PerKeyAction::TestMatrix { hid_code, color } => {
             let color = parse_color(&color).ok_or_else(|| Error::Other(format!("Invalid color: {}", color)))?;
 
-            println!("Testing matrix position ({}, {}) with color {}", row, col, color);
-            let address = KeyAddress::new(row, col);
+            println!("Testing HID code 0x{:02X} with color {}", hid_code, color);
+            let address = KeyAddress::new(hid_code);
             keyboard.set_key_color_direct(address, color).await?;
             keyboard.apply().await?;
-            println!("Done! If no key lights up, this matrix position might not exist.");
+            println!("Done! If no key lights up, this HID code might not exist.");
         }
 
         PerKeyAction::TestPattern { pattern } => {
@@ -1065,7 +1053,6 @@ async fn cmd_per_key_rgb(keyboard: &mut Box<dyn Keyboard>, action: PerKeyAction)
             if let Some(mapping) = keyboard.get_key_mapping() {
                 println!("Key mapping for {}:", mapping.name);
                 println!("Layout: {:?}", mapping.layout);
-                println!("Matrix dimensions: {}x{}", mapping.matrix_rows, mapping.matrix_cols);
 
                 let stats = mapping.get_stats();
                 println!("Statistics: {}", stats);
@@ -1140,13 +1127,11 @@ async fn test_rainbow_pattern(keyboard: &mut Box<dyn Keyboard>) -> Result<()> {
 
             keyboard.set_key_colors(&key_colors).await?;
         } else {
-            // Fallback to matrix addressing
+            // Fallback to HID code addressing
             let mut direct_colors = Vec::new();
-            for row in 0..6 {
-                for col in 0..17 {
-                    let color_idx = (row * 17 + col) % colors.len() as u8;
-                    direct_colors.push((KeyAddress::new(row, col), colors[color_idx as usize]));
-                }
+            for hid_code in 0..120u8 {
+                let color_idx = hid_code % colors.len() as u8;
+                direct_colors.push((KeyAddress::new(hid_code), colors[color_idx as usize]));
             }
             keyboard.set_key_colors_direct(&direct_colors).await?;
         }
@@ -1162,15 +1147,9 @@ async fn test_rainbow_pattern(keyboard: &mut Box<dyn Keyboard>) -> Result<()> {
 async fn test_checkerboard_pattern(keyboard: &mut Box<dyn Keyboard>) -> Result<()> {
     let mut direct_colors = Vec::new();
 
-    for row in 0..6 {
-        for col in 0..17 {
-            let color = if (row + col) % 2 == 0 {
-                Color::WHITE
-            } else {
-                Color::BLACK
-            };
-            direct_colors.push((KeyAddress::new(row, col), color));
-        }
+    for hid_code in 0..120u8 {
+        let color = if hid_code % 2 == 0 { Color::WHITE } else { Color::BLACK };
+        direct_colors.push((KeyAddress::new(hid_code), color));
     }
 
     if keyboard.supports_per_key_rgb() {
@@ -1186,13 +1165,11 @@ async fn test_checkerboard_pattern(keyboard: &mut Box<dyn Keyboard>) -> Result<(
 async fn test_wave_pattern(keyboard: &mut Box<dyn Keyboard>) -> Result<()> {
     let mut direct_colors = Vec::new();
 
-    for row in 0..6 {
-        for col in 0..17 {
-            let wave_pos = (col as f32 / 17.0) * 2.0 * std::f32::consts::PI;
-            let intensity = ((wave_pos.sin() + 1.0) / 2.0 * 255.0) as u8;
-            let color = Color::new(intensity, 0, 255 - intensity);
-            direct_colors.push((KeyAddress::new(row, col), color));
-        }
+    for hid_code in 0..120u8 {
+        let wave_pos = (hid_code as f32 / 120.0) * 2.0 * std::f32::consts::PI;
+        let intensity = ((wave_pos.sin() + 1.0) / 2.0 * 255.0) as u8;
+        let color = Color::new(intensity, 0, 255 - intensity);
+        direct_colors.push((KeyAddress::new(hid_code), color));
     }
 
     if keyboard.supports_per_key_rgb() {
@@ -1206,13 +1183,13 @@ async fn test_wave_pattern(keyboard: &mut Box<dyn Keyboard>) -> Result<()> {
 }
 
 async fn test_basic_positions(keyboard: &mut Box<dyn Keyboard>) -> Result<()> {
-    // Test corners and center positions
+    // Test various key positions using HID codes
     let test_positions = [
-        (KeyAddress::new(0, 0), Color::RED),     // Top-left
-        (KeyAddress::new(0, 16), Color::GREEN),  // Top-right
-        (KeyAddress::new(5, 0), Color::BLUE),    // Bottom-left
-        (KeyAddress::new(5, 16), Color::YELLOW), // Bottom-right
-        (KeyAddress::new(2, 8), Color::WHITE),   // Center
+        (KeyAddress::new(0x29), Color::RED),    // ESC key
+        (KeyAddress::new(0x04), Color::GREEN),  // A key
+        (KeyAddress::new(0x16), Color::BLUE),   // S key
+        (KeyAddress::new(0x2C), Color::YELLOW), // SPACE key
+        (KeyAddress::new(0x28), Color::WHITE),  // ENTER key
     ];
 
     if keyboard.supports_per_key_rgb() {

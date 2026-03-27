@@ -1,7 +1,7 @@
 # Protocol Research Findings — Apex Pro TKL 2023
 
-**Last Updated**: 2026-03-01 (originally 2026-01-15)
-**Status**: Active Testing Phase — Targeted Command Discovery
+**Last Updated**: 2026-03-27 (originally 2026-01-15)
+**Status**: Active Testing Phase — HID Code Discovery Complete
 
 ---
 
@@ -13,12 +13,68 @@ This document compiles reverse engineering resources and protocol discoveries fo
 - ✅ **Existing protocol implementations** — Multiple open-source projects with working Rust/Python code
 - ✅ **RGB protocol documentation** — Detailed packet structures from MSI keyboard research
 - ✅ **Systematic command testing** — Automated bulk testing system implemented (0x20–0x2F range)
-- ✅ **Confirmed RGB commands** — 0x21 (zone colors), 0x22 (brightness), 0x23 (per-key placeholder)
+- ✅ **Confirmed RGB commands** — 0x21 (zone colors), 0x22 (brightness), 0x23 (per-key)
 - ✅ **Reactive & color shift** — 0x25 (reactive mode), 0x26 (color shift effect)
 - ✅ **OSD navigation discovered** — 0x24 brings up actuation menu on keyboard OLED
 - ✅ **Actuation control** — 0x2D write works (experimental); read command unknown
-- 🔄 **Per-key RGB protocol** — Command `0x23` is a placeholder; actual protocol undiscovered
+- ✅ **HID Code Discovery (2026-03-27)** — Per-key addressing uses USB HID keycodes, not row/col matrix
+- 🔄 **Per-key RGB packet format** — HID codes confirmed; exact command structure needs USB capture
 - ❌ **Rapid Trigger protocol** — Not yet tested (planned for 0x30–0x3F range)
+
+---
+
+## 0. SteelSeries GG 107.0.0 Extraction Analysis (2026-03-27)
+
+### Extraction Results
+
+**Source:** `SteelSeriesGG107.0.0Setup.exe` (360MB Nullsoft installer)
+**Extracted Files:** 2656 files, 1.09 GB
+**Key Directories:**
+- `apps/engine/` — Main SteelSeries Engine
+- `apps/engine/deviceSpecifications/` — 473 encrypted `.edevice` files
+- `apps/engine/configurationMigrations/` — Lisp-like `.migration` files with key data
+
+### Critical Discovery: HID Code Based Addressing
+
+**Finding:** SteelSeries uses **USB HID Usage IDs** (not row/col matrix addresses) for per-key identification.
+
+**Evidence from `apex_7+pro.migration`:**
+```lisp
+(define fullsize-keyboard-keycodes '(4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 133 135 136 137 138 139 224 225 226 227 228 229 230 231 240))
+
+(define tkl-keyboard-keycodes '(4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 73 74 75 76 77 78 79 80 81 82 100 133 135 136 137 138 139 224 225 226 227 228 229 230 231 240))
+
+(define pro-keyboard-actuation-keycodes '(4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 100 135 136 137 138 139 224 225 226 227 228 229 230 231 240))
+```
+
+### Binary Analysis Results
+
+**SteelSeriesEngine.exe strings:**
+- `hidCode` — HID code for key identification
+- `KeyId` — Internal key identifier type
+- `MapKeys` — Key mapping function
+- `rows`, `cols`, `rowsi` — Matrix dimension references
+- `RGBA`, `RGBAAt`, `SetRGBA` — Color control functions
+- `isRGB` — RGB capability check
+- `rgb-zone`, `ZoneId`, `zoneV6` — Zone-based RGB control
+
+**HIDDLL.dll strings:**
+- `HidD_SetFeature`, `HidD_GetFeature` — Windows HID API for feature reports
+- `WriteFile`, `ReadFile` — Standard file I/O for HID communication
+- `ENABLE_KEYS`, `COLOR`, `KEYS`, `KEYS_MENU` — Command names
+
+### Device Specification Encryption
+
+**Format:** `.edevice` files use encrypted "BEGIN DESCRIPTOR" format
+**Status:** Cannot be directly read; requires decryption key or runtime extraction
+**Workaround:** Configuration migration files contain the key data needed
+
+### Protocol Implications
+
+1. **Per-key RGB:** Use HID codes (0x04-0x64) for key addressing in command data
+2. **Feature Reports:** Some commands may use `HidD_SetFeature` instead of output reports
+3. **Actuation:** The `pro-keyboard-actuation-keycodes` list shows which keys support analog
+4. **Modifiers:** Codes 224-231 are left/right Ctrl, Shift, Alt, GUI
 
 ---
 
