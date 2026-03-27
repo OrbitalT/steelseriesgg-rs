@@ -42,7 +42,7 @@ The goal is to address the highest-value, lowest-ambiguity improvements first, w
 | Item | Status | Blocker | Next Step |
 |------|--------|---------|-----------|
 | Issue #120 (audio hang) | 🔄 Partial | Initial PA connection unbounded | Add timeout to `PulseHandler::new()` |
-| Issue #6 (Arch compile) | ⏸️ Paused | ⚠️ Likely stale — no activity since Jan 2026, release build passes on standard Linux | Requires Arch environment to verify |
+| Issue #6 (Arch compile) | ⏸️ Paused | ⚠️ **STALE** — No activity since Jan 2026. Release build passes on standard Linux. Needs reproduction attempt to confirm if issue still exists. | Requires Arch environment to verify |
 
 ### Pending
 
