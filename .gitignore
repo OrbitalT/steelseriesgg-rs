@@ -39,6 +39,7 @@ ralph.yml
 logs/security/
 .logs/
 .opencode/plans/
+.cachebro/
 
 # Mock udev library for CI builds
 mock_udev/lib/
