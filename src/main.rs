@@ -1090,7 +1090,13 @@ async fn cmd_per_key_rgb(keyboard: &mut Box<dyn Keyboard>, action: PerKeyAction)
 
         PerKeyAction::Status => {
             println!("Per-key RGB Status:");
-            println!("Supported: {}", keyboard.supports_per_key_rgb());
+            let perkey_supported = keyboard.supports_per_key_rgb();
+            if perkey_supported {
+                println!("Provisional: true (key mapping exists, hardware protocol unverified)");
+                println!("Note: Per-key RGB protocol is experimental - actual hardware behavior may vary");
+            } else {
+                println!("Provisional: false");
+            }
 
             if let Some(mapping) = keyboard.get_key_mapping() {
                 println!("Key mapping: {} ({:?})", mapping.name, mapping.layout);
@@ -3120,9 +3126,9 @@ async fn run_animation_loop(daemon_state_anim: Arc<RwLock<DaemonState>>) {
 
             // Clone overlays only if there are any
             let overlays = if state.gamesense_overlays.is_empty() {
-                HashMap::new()
+                Arc::new(HashMap::new())
             } else {
-                state.gamesense_overlays.clone()
+                Arc::new(state.gamesense_overlays.clone()) // Clone once, cheap Arc clones after
             };
 
             (count, overlays, now)

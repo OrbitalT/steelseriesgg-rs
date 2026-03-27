@@ -4,6 +4,7 @@
 //! Requires root/sudo privileges to modify system files.
 
 use crate::{Error, Result};
+use rustix::process::geteuid;
 
 /// USB polling rate options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,7 +120,7 @@ impl DeviceType {
 
 /// Check if the current process is running as root.
 fn is_root() -> bool {
-    unsafe { libc::geteuid() == 0 }
+    geteuid().as_raw() == 0
 }
 
 /// Set USB polling rate for a device type.

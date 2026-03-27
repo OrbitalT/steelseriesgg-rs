@@ -36,9 +36,9 @@ pub enum Error {
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 
-    /// Serialization error (manual)
+    /// Serialization message error
     #[error("Serialization error: {0}")]
-    SerializationError(String),
+    SerializationMessage(String),
 
     /// File system error
     #[error("File system error: {0}")]

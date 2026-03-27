@@ -37,6 +37,8 @@ ralph.yml
 .worktrees/
 .security-key
 logs/security/
+.logs/
+.opencode/plans/
 
 # Mock udev library for CI builds
 mock_udev/lib/

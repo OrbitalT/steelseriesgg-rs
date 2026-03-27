@@ -277,7 +277,7 @@ impl DeviceStateStore {
         }; // Lock released here
 
         let content = serde_json::to_string_pretty(&serializable)
-            .map_err(|e| Error::SerializationError(format!("Failed to serialize state: {}", e)))?;
+            .map_err(|e| Error::SerializationMessage(format!("Failed to serialize state: {}", e)))?;
 
         // Use atomic write with temp file to prevent corruption
         let temp_file = state_file.with_extension("tmp");

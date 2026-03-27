@@ -1,7 +1,6 @@
 //! HID communication diagnostics and analysis tools.
 
-#[cfg(unix)]
-use libc;
+use rustix::process::getuid;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 #[cfg(unix)]
@@ -132,7 +131,7 @@ impl HidDiagnostics {
                     }
 
                     // Verify ownership (must be owned by us)
-                    if metadata.uid() != unsafe { libc::getuid() } {
+                    if metadata.uid() != getuid().as_raw() {
                         return Err(Error::Other(format!(
                             "Security error: {:?} is not owned by the current user",
                             parent

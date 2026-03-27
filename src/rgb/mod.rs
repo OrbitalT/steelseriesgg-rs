@@ -562,10 +562,10 @@ impl PerKeyEffectEngine {
             effect,
             start_time: Instant::now(),
             key_mapping,
-            cached_key_colors: HashMap::new(),
+            cached_key_colors: HashMap::with_capacity(128),
             last_compute_time: Duration::ZERO,
             cache_threshold: Duration::from_millis(16), // ~60 FPS
-            reactive_state: HashMap::new(),
+            reactive_state: HashMap::with_capacity(32),
         }
     }
 

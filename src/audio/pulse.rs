@@ -5,6 +5,7 @@ use libpulse_binding::context::{Context, FlagSet as ContextFlagSet, State as Con
 use libpulse_binding::mainloop::threaded::Mainloop;
 use libpulse_binding::volume::{ChannelVolumes, Volume};
 use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 /// Describes a single PulseAudio sink input (an output audio stream routed to a sink).
 ///
@@ -46,8 +47,9 @@ impl PulseHandler {
             .start()
             .map_err(|e| Error::Audio(format!("Failed to start mainloop: {}", e)))?;
 
-        // Wait for ready
+        // Wait for ready with 5s timeout
         mainloop.lock();
+        let deadline = Instant::now() + Duration::from_secs(5);
         let result = loop {
             match context.get_state() {
                 ContextState::Ready => break Ok(()),
@@ -55,6 +57,9 @@ impl PulseHandler {
                     break Err(Error::Audio("Context connection failed".to_string()));
                 }
                 _ => {
+                    if Instant::now() >= deadline {
+                        break Err(Error::Audio("PulseAudio connection timeout after 5s".to_string()));
+                    }
                     mainloop.wait();
                 }
             }

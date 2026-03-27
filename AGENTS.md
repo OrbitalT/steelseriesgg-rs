@@ -1,292 +1,320 @@
+<!-- Generated: 2026-03-26 | Updated: 2026-03-26 -->
+
 # steelseriesgg-rs
 
-Open-source Linux replacement for SteelSeries GG: RGB lighting control, GameSense HTTP server (port 27301), and audio management for SteelSeries keyboards and headsets.
+## Purpose
 
-**Language**: Rust 2021 · **Toolchain**: pinned in `rust-toolchain.toml` (currently `1.94.0`) · **License**: MIT
-**Binary**: `ssgg` (`src/main.rs`) · **Library**: `steelseries_gg` (`src/lib.rs`)
-**Features**: `audio` (libpulse), `sonar` (reqwest) — default build has neither
+steelseriesgg-rs is an open-source Linux replacement for SteelSeries GG, providing:
+- **RGB lighting control** for SteelSeries keyboards
+- **GameSense HTTP server** on port 27301 compatible with SteelSeries GameSense API
+- **Audio management** for SteelSeries audio devices (optional, feature-gated)
+- Hardware abstraction for multiple SteelSeries device types
 
----
-
-## Source of Truth
-
-When prose in this file drifts, prefer the live repo configuration:
-
-- `Cargo.toml` — dependency versions, features, package metadata
-- `rust-toolchain.toml` — pinned Rust toolchain and components
-- `.github/workflows/*.yml` — CI triggers, matrices, and required commands
-- `src/devices/hid_reports.rs` — current HID report serialization details
+**Language**: Rust 2021 (Edition 2021)
+**Toolchain**: Pinned at 1.94.0 in `rust-toolchain.toml`
+**License**: MIT
+**Binary**: `ssgg` (src/main.rs, ~3500+ LOC, 15+ subcommands via clap derive)
+**Library**: `steelseries_gg` (src/lib.rs)
 
 ---
 
-## Key Source Layout
+## Key Files
 
-```
-src/
-  main.rs                   # CLI entry (~3500+ LOC, 15+ subcommands via clap derive)
-  lib.rs                    # Module declarations + prelude re-exports
-  error.rs                  # Error enum (thiserror) + Result alias
-  device_state.rs           # DeviceStateStore — per-device runtime state cache
-  performance.rs            # PerformanceMonitor, PerformanceManager, RgbTimingMetrics
-  pollrate.rs               # USB polling rate control (requires root)
-  validation.rs             # RgbValidator, ValidationReport — hardware testing framework
-  diagnostics_export.rs     # Bug report generator (JSON export)
-
-  devices/
-    mod.rs                  # Device trait, DeviceInfo, DeviceType, product IDs, HidOptimizer
-    discovery.rs            # DeviceManager, DeviceFingerprint, HotPlugEvent
-    hid_reports.rs          # HidReportBuilder, CommandCode — always use this, never raw buffers
-    diagnostics.rs          # Global diagnostics store for HID communication logs
-    fuzz.rs                 # Protocol fuzzer (developer tool, hidden CLI command)
-    key_mapping.rs          # KeyId, KeyAddress, KeyMapping, KeyMappingDatabase
-    zone_mapping.rs         # ZoneMapping, ZoneEffect, ZoneFallback
-    keyboards/
-      mod.rs                # GenericKeyboard, Keyboard trait
-      apex.rs               # Apex 3 TKL (PID 0x1622)
-      apex_pro_tkl_2023.rs  # Primary device (PID 0x1628), actuation point control
-    headsets/
-      mod.rs                # GenericHeadset, Headset trait
-
-  rgb/
-    mod.rs                  # Color, Effect, EffectEngine, RgbController, PerKeyRgbController
-    tests.rs                # RGB unit tests
-
-  gamesense/
-    mod.rs                  # GameSense types (GameMetadata, EventBinding, etc.)
-    server.rs               # Axum HTTP server on 127.0.0.1:27301, CORS security
-    handlers.rs             # GameSense API request handlers
-
-  config/mod.rs             # Config, GameSenseConfig — ~/.config/ssgg/config.toml
-  profiles/
-    mod.rs                  # Profile, ProfileManager, KeyboardProfile, HeadsetProfile
-    tests.rs                # Profile unit tests
-
-  audio/                    # feature-gated: requires `audio` or `sonar`
-    mod.rs                  # AudioMixer, Channel
-    pulse.rs                # libpulse-binding integration
-    sonar.rs                # SonarClient — SteelSeries Sonar HTTP API client
-
-  bin/
-    discover_actuation.rs   # Utility to discover actuation point protocol bytes
-    sonar_control.rs        # Standalone Sonar control binary (requires `sonar` feature)
-    verify_key_mapping.rs   # Key mapping verification tool
-    benchmark_rgb_alloc.rs  # RGB allocation benchmarking
-
-tests/
-  cors_security.rs          # Integration tests for GameSense CORS enforcement
-  device_readback.rs        # Integration tests for device communication
-
-docs/development/
-  APEX_PRO_PROTOCOL.md      # USB HID protocol research notes for Apex Pro
-  KEY_MAPPING_RESEARCH.md   # Per-key addressing research
-  PROTOCOL_RESEARCH.md      # General protocol reverse-engineering notes
-  RGB_CONTROL_ANALYSIS.md   # RGB command analysis
-
-assets/
-  99-steelseries.rules      # udev rules (install for non-root HID access)
-  ssgg.service              # systemd service unit
-```
+| File | Description |
+|------|-------------|
+| `Cargo.toml` | Package manifest, features, dependency versions (source of truth) |
+| `Cargo.lock` | Dependency lockfile for reproducible builds |
+| `rust-toolchain.toml` | Pinned Rust version (1.94.0) and components |
+| `rustfmt.toml` | Formatter config (edition 2024, style_edition 2024, 120-char max line) |
+| `CLAUDE.md` | Claude Code agent instructions (architecture, conventions, commands) |
+| `.github/workflows/` | CI/CD pipelines (ci.yml, build.yml, release-arch.yml) |
+| `assets/99-steelseries.rules` | udev rules for non-root HID access |
+| `assets/ssgg.service` | systemd service unit |
+| `PKGBUILD` | Arch Linux package build script |
+| `renovate.json` | Automated dependency update configuration |
 
 ---
 
-## Supported Devices
+## Subdirectories
 
-### Keyboards (PID constants in `src/devices/mod.rs`)
-| Device | PID | Notes |
-|--------|-----|-------|
-| Apex Pro | `0x1610` | |
-| Apex Pro TKL | `0x1614` | |
-| Apex Pro TKL (2023) | `0x1628` | **Primary tested device** |
-| Apex 3 | `0x161A` | |
-| Apex 3 TKL | `0x1622` | |
-| Apex 5 | `0x161C` | |
-| Apex 7 | `0x1612` | |
-| Apex 7 TKL | `0x1616` | |
-
-### Headsets (Arctis Series)
-Arctis 1, Arctis 1 Wireless, Arctis 5, Arctis 7 (2019), Arctis 9, Arctis Pro, Arctis Pro Wireless, Arctis Nova Pro, Arctis Nova Pro Wireless, Arctis Nova 5, Arctis Nova 3, Arctis Nova 1.
-
----
-
-## Conventions
-
-### Naming
-- `snake_case` — functions, variables, modules
-- `PascalCase` — types, traits, enums
-- `SCREAMING_SNAKE_CASE` — constants
-
-### Formatting
-- 4-space indent, 120-char max line, Unix LF
-- `rustfmt.toml` uses `edition = "2024"`, `style_edition = "2024"`
-- Run `cargo fmt` before committing — CI enforces this
-
-### Error Handling
-- **Library code** (`src/lib.rs` and submodules): use `thiserror` variants from `crate::error::Error`
-- **Binary code** (`src/main.rs`, `src/bin/`): use `anyhow` + `.context("description")`
-- Never use `.unwrap()` or `.expect()` — use `?` or map to a typed error
-
-### HID Reports
-- Always use `HidReportBuilder` from `src/devices/hid_reports.rs`
-- **Keyboards**: 65-byte reports (report ID byte in position 0) → `KEYBOARD_REPORT_SIZE`
-- **Headsets**: 64-byte reports (no report ID) → `HEADSET_REPORT_SIZE`
-- Never construct raw byte arrays manually; use `CommandCode` enum + typed command structs
-
-### Logging
-- Use `tracing::{debug, info, warn}` — never `println!` in library code
-- Initialize with `FmtSubscriber` in `main.rs`
-- `RUST_LOG=debug` or `--debug` flag enables verbose output
+| Directory | Purpose |
+|-----------|---------|
+| `src/` | Main source code (library + binary implementation) |
+| `src/devices/` | Device abstraction layer (keyboards, headsets, HID communication) |
+| `src/devices/keyboards/` | Keyboard device implementations (Apex series) |
+| `src/devices/headsets/` | Headset device implementations (Arctis series) |
+| `src/rgb/` | RGB control engine (Color, Effect, EffectEngine, RgbController) |
+| `src/gamesense/` | GameSense HTTP server implementation (Axum, CORS security) |
+| `src/profiles/` | Profile management system (load/save device configurations) |
+| `src/config/` | Configuration file handling (~/.config/ssgg/config.toml) |
+| `src/audio/` | Audio mixer integration (PulseAudio, Sonar API) — feature-gated |
+| `src/bin/` | Standalone binary utilities (discover_actuation, sonar_control, etc.) |
+| `tests/` | Integration tests (CORS security, device communication) |
+| `docs/development/` | Protocol research and reverse-engineering notes |
+| `assets/` | System integration files (udev rules, systemd service) |
+| `mock_udev/` | Mock udev library for CI environments |
+| `.cargo/` | Cargo build configuration |
 
 ---
 
-## Essential Commands
+## For AI Agents
+
+### Working In This Directory
+
+When working on steelseriesgg-rs:
+
+1. **Always prefer CLAUDE.md and live code** over this file when architectural details conflict
+   - Cargo.toml is source of truth for dependency versions and feature flags
+   - src/devices/hid_reports.rs is source of truth for HID report format
+   - .github/workflows/ define CI requirements
+
+2. **Never use `.unwrap()` or `.expect()`**
+   - Library code (src/lib.rs and submodules): use `thiserror` variants from `crate::error::Error` with `?` operator
+   - Binary code (src/main.rs, src/bin/): use `anyhow` + `.context("description")` with `?` operator
+
+3. **Never construct raw byte arrays** for HID communication
+   - Always use `HidReportBuilder` from `src/devices/hid_reports.rs`
+   - Always use `CommandCode` enum + typed command structs
+   - Keyboard reports: 65 bytes (report ID in position 0) → `KEYBOARD_REPORT_SIZE`
+   - Headset reports: 64 bytes (no report ID) → `HEADSET_REPORT_SIZE`
+
+4. **Use HidOptimizer correctly**
+   - Global singleton in `src/devices/mod.rs` via `OnceLock`
+   - FNV-1a hash-based deduplication (50ms cache window)
+   - 5s connectivity cache TTL
+   - Silently skips identical reports — document this behavior in code
+
+5. **Logging in library code**
+   - Use `tracing::{debug, info, warn}` — never `println!`
+   - Initialize with `FmtSubscriber` in `main.rs` only
+   - `RUST_LOG=debug` or `--debug` flag enables verbose output
+
+6. **Naming conventions**
+   - `snake_case`: functions, variables, modules
+   - `PascalCase`: types, traits, enums
+   - `SCREAMING_SNAKE_CASE`: constants
+
+7. **Formatting**
+   - 4-space indent, 120-char max line, Unix LF
+   - Run `cargo fmt` before all commits — CI enforces this
+   - Use `cargo clippy --all-targets --locked -- -D warnings` (3 feature combos in CI)
+
+### Testing Requirements
+
+Before pushing changes:
 
 ```bash
-# Local prerequisites
-# No extra packages are required for the default build.
-sudo apt-get install -y libpulse-dev            # only for --features audio
-./setup_mock_udev.sh                            # optional fallback in CI-like environments
+# Format (CI-enforced)
+cargo fmt
 
-# Build
-cargo build                             # default (no audio/sonar)
-cargo build --features sonar            # Sonar client
-cargo build --features audio            # with libpulse audio mixer
-cargo build --features audio,sonar      # all optional features without --all-features
-cargo build --all-features              # everything
-
-# Test
-cargo test                              # default feature set
-cargo test --features sonar             # CI-covered optional feature set
-cargo test --all-features               # broader local verification
-cargo test -p steelseries-gg-linux      # explicit package
-
-# Format & Lint (CI-enforced, must pass before push)
-cargo fmt                               # format all code
-cargo fmt --all -- --check              # CI format check
+# Lint (CI-enforced, 3 feature combos)
 cargo clippy --all-targets --locked -- -D warnings
 cargo clippy --all-targets --locked --features sonar -- -D warnings
 cargo clippy --all-targets --locked --features audio -- -D warnings
 
-# Run CLI
-cargo run -- devices                    # list connected devices
-cargo run -- rgb color FF0000           # set red
-cargo run -- rgb effect breathing       # breathing animation
-cargo run -- server                     # start GameSense server on :27301
-cargo run -- daemon                     # full daemon mode
-cargo run -- validate                   # validate connected hardware
-cargo run -- bug-report                 # generate JSON diagnostic report
+# Test (CI runs 2 combos)
+cargo test                          # default feature set
+cargo test --features sonar         # CI-covered optional features
+cargo test --all-features           # broader local verification
+cargo test <test_name>              # single test (substring match)
+
+# Build (CI runs 3 combos)
+cargo build
+cargo build --features sonar
+cargo build --features audio
+```
+
+All tests must pass and all clippy warnings must be resolved before commit.
+
+### Common Patterns
+
+**Device Discovery**
+```
+DeviceManager (src/devices/discovery.rs)
+  → enumerate via hidapi
+  → create DeviceInfo + DeviceFingerprint
+  → match by product ID → instantiate Keyboard or Headset
+  → hot-plug support via HotPlugEvent channel
+```
+
+**HID Communication Pipeline**
+```
+CLI command
+  → HidCommand trait impl (RgbZoneCommand, ActuationCommand, etc.)
+  → HidReportBuilder::build_report() [validation + serialization]
+  → write_padded_report() [HidOptimizer dedup + actual write]
+  → hidapi::HidDevice::write()
+```
+
+**RGB Control**
+- `Color`: RGB or named color
+- `Effect`: breathing, spectrum, wave, static, off
+- `EffectEngine`: per-device effect computation with caching
+- `RgbController`: zone-based RGB control
+- `PerKeyRgbController`: per-key RGB (Apex Pro TKL 2023 with `experimental-apex-2023` feature)
+
+**Error Handling Pattern (Library)**
+```rust
+use crate::error::{Error, Result};
+
+fn some_operation() -> Result<T> {
+    let device = DeviceManager::find(pid)?;
+    device.send_command(cmd)?;
+    Ok(value)
+}
+```
+
+**Error Handling Pattern (Binary)**
+```rust
+use anyhow::{Context, Result};
+
+fn main() -> Result<()> {
+    let device = DeviceManager::find(pid)
+        .context("failed to find device")?;
+    Ok(())
+}
+```
+
+**Profile Management**
+- `Profile`: top-level JSON config with optional KeyboardProfile + HeadsetProfile
+- Stored in `~/.config/ssgg/profiles/`
+- Managed via `ProfileManager`
+- `Config` at `~/.config/ssgg/config.toml` controls defaults
+
+**GameSense Server**
+- Axum HTTP server on `127.0.0.1:27301`
+- CORS restricted to same-origin (`127.0.0.1` only) — do NOT loosen
+- State: `Arc<RwLock<ServerState>>`
+- Game registration, event binding, RGB callbacks
+
+### Supported Devices
+
+**Keyboards** (PIDs in src/devices/mod.rs)
+| Device | PID | Notes |
+|--------|-----|-------|
+| Apex Pro | 0x1610 | |
+| Apex Pro TKL | 0x1614 | |
+| Apex Pro TKL (2023) | 0x1628 | Primary tested device, actuation control |
+| Apex 3 | 0x161A | |
+| Apex 3 TKL | 0x1622 | |
+| Apex 5 | 0x161C | |
+| Apex 7 | 0x1612 | |
+| Apex 7 TKL | 0x1616 | |
+
+**Headsets** (Arctis Series)
+Arctis 1, Arctis 1 Wireless, Arctis 5, Arctis 7 (2019), Arctis 9, Arctis Pro, Arctis Pro Wireless, Arctis Nova Pro, Arctis Nova Pro Wireless, Arctis Nova 5, Arctis Nova 3, Arctis Nova 1.
+
+### Critical Constraints
+
+- **hidapi pinned at `=2.6.5`** in Cargo.toml — do NOT change this constraint
+- **Apex Pro TKL 2023 PID is `0x1628`** (not 0x1618)
+- **Actuation point write** via command `0x2D` (`ActuationControl`); read-back not yet implemented
+- **Per-key RGB protocol** still evolving — verify implementation in src/devices/hid_reports.rs before changes
+- **CLI RGB commands** are one-shot; continuous animations require `ssgg daemon`
+- **Report deduplication** silently skips identical reports within 50ms (HidOptimizer)
+- **Hot-plug support** via DeviceManager hot-plug event channel
+- **Use rustix for safe syscalls** instead of raw libc (e.g., `rustix::process::getuid()` for permission checks)
+- **Hidden fuzzer** at `fuzz` subcommand (raw HID bytes, protocol research only)
+
+---
+
+## Dependencies
+
+### External Crates (from Cargo.toml)
+
+| Crate | Version | Purpose | Features |
+|-------|---------|---------|----------|
+| axum | 0.8.8 | HTTP server (GameSense API) | tokio, http1, http2, json |
+| chrono | 0.4.44 | Timestamps in diagnostics | serde |
+| clap | 4.6.0 | CLI argument parsing | derive |
+| colored | 3.1.1 | Terminal output coloring | — |
+| directories | 6.0.0 | User config directories | — |
+| hidapi | =2.6.5 | USB HID communication | linux-native-basic-udev |
+| libc | 0.2.183 | Legacy C interop (deprecated — use rustix for permission checks) | — |
+| libpulse-binding | 2.30.1 | PulseAudio integration | optional (`audio` feature) |
+| parking_lot | 0.12.5 | Faster parking lot locks | — |
+| reqwest | 0.13.2 | HTTP client (Sonar API) | json, optional (`sonar` feature) |
+| serde | 1.0.228 | Serialization framework | derive |
+| serde_json | 1.0.149 | JSON serialization | — |
+| sysinfo | 0.38.4 | System info for diagnostics | — |
+| thiserror | 2.0.18 | Typed error handling | — |
+| indicatif | 0.18.4 | Progress bars/spinners | — |
+| tabled | 0.20.0 | Table formatting | — |
+| tokio | 1.50.0 | Async runtime | rt-multi-thread, macros, signal, fs |
+| toml | 1.1.0 | TOML config parsing | — |
+| tower-http | 0.6.8 | HTTP middleware | cors |
+| tracing | 0.1.44 | Structured logging | — |
+| tracing-subscriber | 0.3.23 | Tracing implementation | env-filter |
+| anyhow | 1.0.102 | Error context (binary use) | — |
+| async-trait | 0.1.89 | Async trait support | — |
+| rustix | 1.1.4 | Safe syscalls | process |
+
+### System Dependencies
+
+**Default build (no optional features)**
+No system packages required.
+
+**Full build (with all optional features)**
+```bash
+sudo apt-get install -y libpulse-dev    # Required for 'audio' feature
 ```
 
 ---
 
 ## Feature Flags
 
-| Feature | Enables | Deps |
-|---------|---------|------|
-| *(none)* | Core RGB, GameSense server, profiles | — |
-| `audio` | `AudioMixer`, `Channel`, PulseAudio integration | `libpulse-binding` |
-| `sonar` | `SonarClient` — SteelSeries Sonar HTTP API | `reqwest` |
-| `--all-features` | Everything above | All system deps |
+| Feature | Enables | Dependencies | Default |
+|---------|---------|--------------|---------|
+| *(none)* | Core RGB, GameSense server, profiles, device discovery | — | Yes |
+| `audio` | AudioMixer, Channel, PulseAudio integration | libpulse-binding | No |
+| `sonar` | SonarClient — SteelSeries Sonar HTTP API | reqwest | No |
+| `experimental-apex-2023` | Direct RGB command path for Apex Pro TKL 2023 (PID 0x1628) | — | No |
 
-**System packages** needed for full build (Ubuntu/Debian):
-```bash
-sudo apt-get install -y libpulse-dev
-```
-
----
-
-## Architecture Patterns
-
-### Device Abstraction
-- `Device` trait (`src/devices/mod.rs`) — base interface: `initialize`, `send_raw`, `receive_raw`, `close`
-- `Keyboard` trait (`src/devices/keyboards/mod.rs`) — extends `Device` with RGB, actuation
-- `Headset` trait (`src/devices/headsets/mod.rs`) — extends `Device` with audio control
-- `DeviceManager` (`src/devices/discovery.rs`) — HID enumeration via `hidapi`, hot-plug support
-
-### HID Communication Pipeline
-```
-CLI command
-  → HidCommand trait impl (RgbZoneCommand, ActuationCommand, etc.)
-  → HidReportBuilder::build_report()  [validation + serialization]
-  → write_padded_report()             [HidOptimizer dedup cache + actual write]
-  → hidapi::HidDevice::write()
-```
-
-### HidOptimizer
-Global singleton (`OnceLock<HidOptimizer>`) in `src/devices/mod.rs`:
-- FNV-1a hashes each report; caches for 50ms to skip duplicate writes
-- Connectivity cache with 5s TTL to reduce redundant open/close checks
-- `HidDeviceType::Keyboard` = 65 bytes (with report ID); `Headset` = 64 bytes
-
-### Performance System (`src/performance.rs`)
-- `PerformanceMonitor` — ring buffer of last 60 frames for timing/computation history
-- `PerformanceManager` — adaptive refresh rates, effect computation caching with smart invalidation
-- `RgbTimingMetrics` — serializable snapshot (target/actual FPS, dropped frames, cache hit rate)
-
-### GameSense Server (`src/gamesense/`)
-- Axum HTTP server on `127.0.0.1:27301`, compatible with SteelSeries GameSense API
-- CORS restricted to same-origin (`127.0.0.1` only) — security enforced in `server.rs`
-- Game registration, event binding, RGB callbacks
-- State stored in `Arc<RwLock<ServerState>>`
-
-### Profile System (`src/profiles/mod.rs`)
-- `Profile` — top-level JSON config with optional `KeyboardProfile` + `HeadsetProfile`
-- Stored in `~/.config/ssgg/profiles/`; managed via `ProfileManager`
-- `Config` at `~/.config/ssgg/config.toml` controls defaults and GameSense settings
+**Feature combinations tested in CI:**
+- Default (no features)
+- `--features sonar`
+- `--features audio`
 
 ---
 
 ## CLI Subcommands
 
-Main binary `ssgg` (via `clap` derive):
+Main binary `ssgg` (via clap derive):
 
-| Subcommand | Description |
-|-----------|-------------|
-| `devices` | List connected SteelSeries devices |
-| `rgb color <hex\|name>` | Set static color |
-| `rgb brightness <0-100>` | Set brightness |
-| `rgb effect <name>` | Set effect (static, breathing, spectrum, wave, off) |
-| `rgb perkey` | Per-key RGB control |
-| `actuation set <value>` | Set actuation point (Apex Pro TKL 2023) |
-| `profile` | Save/load/list profiles |
-| `audio` | Audio mixer (requires `audio` feature) |
-| `sonar` | Sonar API control (requires `sonar` feature) |
-| `pollrate` | USB polling rate (requires root) |
-| `server` | Start GameSense HTTP server |
-| `daemon` | Run as full daemon (device + server) |
-| `validate` | Run hardware validation tests |
-| `performance` | Monitor/control RGB performance |
-| `bug-report` | Generate JSON diagnostic report |
-| `status` | Real-time device connection status |
-| `hid-logs` | View HID communication logs |
-| `test-device` | Run automated device tests |
-| `verify-performance` | Monitor RGB performance metrics |
-| `fuzz` | *(hidden)* Protocol fuzzer for reverse engineering |
-
----
-
-## Architecture & Concurrency Rules
-
-- `hidapi` is pinned at **`=2.6.5`** (`Cargo.toml`) — do not change this constraint
-- Apex Pro TKL 2023 product ID is **`0x1628`** (not `0x1618`)
-- Per-key RGB protocol details are still evolving — verify the current implementation in `src/devices/hid_reports.rs` and keyboard code before changing it
-- Actuation point **write** works via command `0x2D` (`ActuationControl`); read-back is not yet implemented
-- CLI RGB commands are one-shot; continuous animations require `ssgg daemon`
-- GameSense server CORS is restricted to localhost origin — do not loosen without security review
-- `write_padded_report` silently deduplicates identical reports within 50ms (HidOptimizer cache)
-- `DeviceManager` supports hot-plug detection via `HotPlugEvent` channel
-- The `fuzz` subcommand is hidden from help but sends raw HID bytes — use only for protocol research
+| Subcommand | Description | Feature Gate |
+|-----------|-------------|--------------|
+| `devices` | List connected SteelSeries devices | — |
+| `rgb color <hex\|name>` | Set static color | — |
+| `rgb brightness <0-100>` | Set brightness | — |
+| `rgb effect <name>` | Set effect (static, breathing, spectrum, wave, off) | — |
+| `rgb perkey` | Per-key RGB control | experimental-apex-2023 |
+| `actuation set <value>` | Set actuation point (Apex Pro TKL 2023) | — |
+| `profile` | Save/load/list profiles | — |
+| `audio` | Audio mixer | audio |
+| `sonar` | Sonar API control | sonar |
+| `pollrate` | USB polling rate (requires root) | — |
+| `server` | Start GameSense HTTP server | — |
+| `daemon` | Run as full daemon (device + server) | — |
+| `validate` | Run hardware validation tests | — |
+| `performance` | Monitor/control RGB performance | — |
+| `bug-report` | Generate JSON diagnostic report | — |
+| `status` | Real-time device connection status | — |
+| `hid-logs` | View HID communication logs | — |
+| `test-device` | Run automated device tests | — |
+| `verify-performance` | Monitor RGB performance metrics | — |
+| `fuzz` | *(hidden)* Protocol fuzzer for reverse engineering | — |
 
 ---
 
-## Commit Format
+## Commit Message Format
 
 ```
 <type>: <description>
 ```
 
-Types: `feat` `fix` `refactor` `docs` `test` `perf` `chore` `style`
+**Types**: `feat` `fix` `refactor` `docs` `test` `perf` `chore` `style`
 
-Examples:
+**Examples:**
 ```
 feat: add per-key RGB support for Apex 3 TKL
 fix: correct actuation point byte order in HID report
@@ -297,15 +325,124 @@ chore: bump hidapi to =2.6.5
 
 ---
 
-## CI/CD (`.github/workflows/`)
+## CI/CD Pipelines
 
-| Workflow | Trigger | Jobs |
-|---------|---------|------|
-| `ci.yml` | push/PR to `main` | fmt, clippy (3 feature combos), test (2 combos), build (3 combos) |
-| `build.yml` | `workflow_dispatch`, `merge_group` | release build |
-| `release-arch.yml` | tag push (`v*`), `workflow_dispatch`, `merge_group` | Arch Linux PKGBUILD release |
-| `cargo-assist.yml` | push | dependency assistance |
-| `dependabot.yml` / `renovate.json` | scheduled | automated dep bumps |
+| Workflow | Trigger | Jobs | Requirements |
+|---------|---------|------|--------------|
+| `ci.yml` | push/PR to main | fmt check, clippy (3 combos), test (2 combos), build (3 combos) | All pass required |
+| `build.yml` | workflow_dispatch, merge_group | Release build | — |
+| `release-arch.yml` | tag push (v*), workflow_dispatch, merge_group | Arch Linux PKGBUILD release | — |
+| `cargo-assist.yml` | push | Dependency assistance | — |
+| `dependabot.yml` / `renovate.json` | scheduled | Automated dep bumps | — |
 
-CI runs clippy with `--features ""`, `--features sonar`, `--features audio` separately.
-All clippy warnings are treated as errors (`-D warnings`).
+**CI format check:**
+```bash
+cargo fmt --all -- --check
+```
+
+**CI clippy (3 feature combos, all warnings errors):**
+```bash
+cargo clippy --all-targets --locked -- -D warnings
+cargo clippy --all-targets --locked --features sonar -- -D warnings
+cargo clippy --all-targets --locked --features audio -- -D warnings
+```
+
+**CI test (2 feature combos):**
+```bash
+cargo test
+cargo test --features sonar
+```
+
+---
+
+## Key Architecture Decisions
+
+**Device Abstraction**
+- `Device` trait: base interface (initialize, send_raw, receive_raw, close)
+- `Keyboard` trait: extends Device with RGB and actuation control
+- `Headset` trait: extends Device with audio control
+- `DeviceManager`: HID enumeration via hidapi with hot-plug support
+
+**HID Optimization**
+- `HidOptimizer` singleton (OnceLock) with FNV-1a hashing
+- 50ms deduplication cache window prevents redundant writes
+- 5s connectivity cache TTL reduces open/close overhead
+- Size: Keyboard 65 bytes (report ID), Headset 64 bytes (no report ID)
+
+**Performance System**
+- `PerformanceMonitor`: ring buffer of last 60 frames
+- `PerformanceManager`: adaptive refresh rates, effect caching
+- `RgbTimingMetrics`: serializable snapshot (FPS, dropped frames, cache hit rate)
+
+**Profile Storage**
+- User profiles: `~/.config/ssgg/profiles/`
+- Main config: `~/.config/ssgg/config.toml`
+- Format: JSON for profiles, TOML for main config
+
+**Security (GameSense Server)**
+- CORS restricted to `127.0.0.1` only — do NOT loosen
+- Arc<RwLock<ServerState>> for thread-safe access
+- Axum middleware security enforcement
+
+---
+
+<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+
+# context-mode — MANDATORY routing rules
+
+You have context-mode MCP tools available. These rules are NOT optional — they protect your context window from flooding. A single unrouted command can dump 56 KB into context and waste the entire session.
+
+## BLOCKED commands — do NOT attempt these
+
+### curl / wget — BLOCKED
+Any shell command containing `curl` or `wget` will be intercepted and blocked by the context-mode plugin. Do NOT retry.
+Instead use:
+- `context-mode_ctx_fetch_and_index(url, source)` to fetch and index web pages
+- `context-mode_ctx_execute(language: "javascript", code: "const r = await fetch(...)")` to run HTTP calls in sandbox
+
+### Inline HTTP — BLOCKED
+Any shell command containing `fetch('http`, `requests.get(`, `requests.post(`, `http.get(`, or `http.request(` will be intercepted and blocked. Do NOT retry with shell.
+Instead use:
+- `context-mode_ctx_execute(language, code)` to run HTTP calls in sandbox — only stdout enters context
+
+### Direct web fetching — BLOCKED
+Do NOT use any direct URL fetching tool. Use the sandbox equivalent.
+Instead use:
+- `context-mode_ctx_fetch_and_index(url, source)` then `context-mode_ctx_search(queries)` to query the indexed content
+
+## REDIRECTED tools — use sandbox equivalents
+
+### Shell (>20 lines output)
+Shell is ONLY for: `git`, `mkdir`, `rm`, `mv`, `cd`, `ls`, `npm install`, `pip install`, and other short-output commands.
+For everything else, use:
+- `context-mode_ctx_batch_execute(commands, queries)` — run multiple commands + search in ONE call
+- `context-mode_ctx_execute(language: "shell", code: "...")` — run in sandbox, only stdout enters context
+
+### File reading (for analysis)
+If you are reading a file to **edit** it → reading is correct (edit needs content in context).
+If you are reading to **analyze, explore, or summarize** → use `context-mode_ctx_execute_file(path, language, code)` instead. Only your printed summary enters context.
+
+### grep / search (large results)
+Search results can flood context. Use `context-mode_ctx_execute(language: "shell", code: "grep ...")` to run searches in sandbox. Only your printed summary enters context.
+
+## Tool selection hierarchy
+
+1. **GATHER**: `context-mode_ctx_batch_execute(commands, queries)` — Primary tool. Runs all commands, auto-indexes output, returns search results. ONE call replaces 30+ individual calls.
+2. **FOLLOW-UP**: `context-mode_ctx_search(queries: ["q1", "q2", ...])` — Query indexed content. Pass ALL questions as array in ONE call.
+3. **PROCESSING**: `context-mode_ctx_execute(language, code)` | `context-mode_ctx_execute_file(path, language, code)` — Sandbox execution. Only stdout enters context.
+4. **WEB**: `context-mode_ctx_fetch_and_index(url, source)` then `context-mode_ctx_search(queries)` — Fetch, chunk, index, query. Raw HTML never enters context.
+5. **INDEX**: `context-mode_ctx_index(content, source)` — Store content in FTS5 knowledge base for later search.
+
+## Output constraints
+
+- Keep responses under 500 words.
+- Write artifacts (code, configs, PRDs) to FILES — never return them as inline text. Return only: file path + 1-line description.
+- When indexing content, use descriptive source labels so others can `search(source: "label")` later.
+
+## ctx commands
+
+| Command | Action |
+|---------|--------|
+| `ctx stats` | Call the `stats` MCP tool and display the full output verbatim |
+| `ctx doctor` | Call the `doctor` MCP tool, run the returned shell command, display as checklist |
+| `ctx upgrade` | Call the `upgrade` MCP tool, run the returned shell command, display as checklist |

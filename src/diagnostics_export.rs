@@ -344,7 +344,7 @@ pub async fn export_bug_report(report: &BugReport, path: &str) -> Result<()> {
 
     // Serialize to pretty-printed JSON
     let json_content = serde_json::to_string_pretty(report)
-        .map_err(|e| Error::SerializationError(format!("Failed to serialize report: {}", e)))?;
+        .map_err(|e| Error::SerializationMessage(format!("Failed to serialize report: {}", e)))?;
 
     // Write to file using async I/O
     tokio::fs::write(path, &json_content)
