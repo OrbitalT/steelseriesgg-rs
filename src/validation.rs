@@ -18,6 +18,7 @@ use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tokio::fs;
 use tracing::debug;
 
 /// Memory usage sample containing key system metrics.
@@ -39,11 +40,11 @@ pub struct MemorySample {
 
 impl MemorySample {
     /// Create a new memory sample by reading current system state.
-    pub async fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?;
 
         // Read memory information from /proc/self/status
-        let status_content = tokio::fs::read_to_string("/proc/self/status").await?;
+        let status_content = fs::read_to_string("/proc/self/status").await?;
         let mut rss_kb: u64 = 0;
         let mut vm_size_kb: u64 = 0;
 
@@ -56,18 +57,16 @@ impl MemorySample {
         }
 
         // Count file descriptors in /proc/self/fd
-        let mut fd_count = 0;
-        if let Ok(mut entries) = tokio::fs::read_dir("/proc/self/fd").await {
-            loop {
-                match entries.next_entry().await? {
-                    Some(_) => fd_count += 1,
-                    None => break,
-                }
-            }
-        }
+        let fd_count = tokio::task::spawn_blocking(|| {
+            std::fs::read_dir("/proc/self/fd")
+                .map(|entries| entries.count() as u32)
+                .unwrap_or(0)
+        })
+        .await
+        .unwrap_or(0);
 
         // Read CPU stats from /proc/self/stat for basic CPU usage estimation
-        let stat_content = tokio::fs::read_to_string("/proc/self/stat").await?;
+        let stat_content = fs::read_to_string("/proc/self/stat").await?;
         let cpu_percent = Self::parse_cpu_usage(&stat_content).unwrap_or(0.0);
 
         // Heap usage approximation (RSS - executable size)
@@ -316,7 +315,8 @@ impl ResourceValidator {
         self.memory_tracker.add_sample().await?;
 
         // Set CPU baseline (would be improved with actual CPU monitoring)
-        self.cpu_baseline = self.memory_tracker.latest_sample().map(|s| s.cpu_percent);
+        let sample = MemorySample::new().await?;
+        self.cpu_baseline = Some(sample.cpu_percent);
 
         Ok(())
     }
