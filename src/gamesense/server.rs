@@ -9,7 +9,7 @@ use axum::{
 use parking_lot::RwLock;
 use std::collections::HashMap;
 #[cfg(unix)]
-use std::fs::{self, OpenOptions};
+use std::fs;
 use std::net::SocketAddr;
 #[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
@@ -182,7 +182,7 @@ impl GameSenseServer {
             }
 
             // Secure file write
-            let mut options = OpenOptions::new();
+            let mut options = fs::OpenOptions::new();
             options.write(true).create(true).truncate(true);
 
             // Set file creation mode to 600 (rw-------)
@@ -209,7 +209,13 @@ impl GameSenseServer {
                 std::fs::create_dir_all(parent)?;
             }
 
-            std::fs::write(path, serde_json::to_string_pretty(content)?)?;
+            // Fallback for non-unix platforms
+            let json = serde_json::to_string_pretty(content)?;
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create(true).truncate(true);
+
+            let mut file = options.open(path)?;
+            std::io::Write::write_all(&mut file, json.as_bytes())?;
             debug!("Wrote JSON to {:?}", path);
         }
 
