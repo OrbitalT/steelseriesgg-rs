@@ -39,23 +39,21 @@ pub struct MemorySample {
 
 impl MemorySample {
     /// Create a new memory sample by reading current system state.
-    pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?;
 
         // Perform all synchronous /proc file reads in a single blocking task
         // to minimize blocking the async executor and reduce spawn overhead
-        let (status_content, fd_count, stat_content) = tokio::task::spawn_blocking(|| {
-            let status = std::fs::read_to_string("/proc/self/status")?;
-
-            let fds = std::fs::read_dir("/proc/self/fd")
-                .map(|entries| entries.count() as u32)
-                .unwrap_or(0);
-
-            let stat = std::fs::read_to_string("/proc/self/stat")?;
-
-            Ok::<_, std::io::Error>((status, fds, stat))
-        })
-        .await??;
+        let (status_content, fd_count, stat_content) =
+            tokio::task::spawn_blocking(|| -> Result<(String, u32, String), std::io::Error> {
+                let status = std::fs::read_to_string("/proc/self/status")?;
+                let fds = std::fs::read_dir("/proc/self/fd")
+                    .map(|entries| entries.count() as u32)
+                    .unwrap_or(0);
+                let stat = std::fs::read_to_string("/proc/self/stat")?;
+                Ok((status, fds, stat))
+            })
+            .await??;
 
         let mut rss_kb: u64 = 0;
         let mut vm_size_kb: u64 = 0;
@@ -70,8 +68,7 @@ impl MemorySample {
 
         let cpu_percent = Self::parse_cpu_usage(&stat_content).unwrap_or(0.0);
 
-        // Heap usage approximation (RSS - executable size)
-        let heap_kb = rss_kb.saturating_sub(4096); // Rough approximation
+        let heap_kb = rss_kb.saturating_sub(4096);
 
         Ok(MemorySample {
             timestamp,
@@ -121,7 +118,7 @@ impl MemoryTracker {
     }
 
     /// Add a new memory sample.
-    pub async fn add_sample(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn add_sample(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let sample = MemorySample::new().await?;
 
         // Set baseline on first sample
@@ -309,7 +306,7 @@ impl ResourceValidator {
     }
 
     /// Start baseline measurement period.
-    pub async fn start_baseline_measurement(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn start_baseline_measurement(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         debug!("Starting resource baseline measurement");
 
         // Take initial memory sample
@@ -323,7 +320,7 @@ impl ResourceValidator {
     }
 
     /// Add a memory usage sample.
-    pub async fn track_memory_usage(&mut self) -> Result<MemoryAnalysis, Box<dyn std::error::Error>> {
+    pub async fn track_memory_usage(&mut self) -> Result<MemoryAnalysis, Box<dyn std::error::Error + Send + Sync>> {
         self.memory_tracker.add_sample().await?;
         Ok(self.memory_tracker.analyze_stability())
     }

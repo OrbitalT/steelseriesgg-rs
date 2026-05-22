@@ -178,6 +178,23 @@ impl From<&HashMap<DeviceId, DeviceState>> for SerializableStates {
     }
 }
 
+/// A zero-copy wrapper for serializing device states without cloning.
+struct SerializableStatesRef<'a>(&'a HashMap<DeviceId, DeviceState>);
+
+impl<'a> Serialize for SerializableStatesRef<'a> {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for (id, state) in self.0 {
+            map.serialize_entry(&id.to_key(), state)?;
+        }
+        map.end()
+    }
+}
+
 /// Manager for device state persistence with async write-behind caching.
 pub struct DeviceStateStore {
     states: Arc<RwLock<HashMap<DeviceId, DeviceState>>>,
@@ -203,7 +220,50 @@ impl DeviceStateStore {
         Self::with_path(state_file)
     }
 
-    /// Create a new device state store with a specific path (useful for testing).
+    /// Create a new device state store asynchronously.
+    pub async fn new_async() -> Result<Self> {
+        let state_file = Config::config_dir()
+            .ok_or_else(|| Error::InvalidConfig("could not determine config directory".to_string()))?
+            .join("device_state.json");
+
+        Self::with_path_async(state_file).await
+    }
+
+    /// Create a new device state store asynchronously with a specific path.
+    pub async fn with_path_async(state_file: PathBuf) -> Result<Self> {
+        let parent = state_file.parent().map(|p| p.to_path_buf());
+        if let Some(parent) = parent {
+            tokio::task::spawn_blocking(move || std::fs::create_dir_all(parent))
+                .await
+                .map_err(|e| Error::Other(format!("Task join error: {}", e)))??;
+        }
+
+        let states = Arc::new(RwLock::new(HashMap::new()));
+        let dirty_flag = Arc::new(AtomicBool::new(false));
+
+        let mut store = Self {
+            states: Arc::clone(&states),
+            state_file: state_file.clone(),
+            dirty_flag: Arc::clone(&dirty_flag),
+            write_behind_handle: None,
+        };
+
+        // Load existing state if available
+        if store.state_file.exists() {
+            let path_clone = store.state_file.clone();
+            let file_content = tokio::task::spawn_blocking(move || std::fs::read_to_string(&path_clone))
+                .await
+                .map_err(|e| Error::Other(format!("Task join error: {}", e)))??;
+            store.load_from_str(&file_content)?;
+        }
+
+        // Start the write-behind background task
+        let write_handle = Self::start_write_behind_task(states, state_file, dirty_flag);
+        store.write_behind_handle = Some(write_handle);
+
+        Ok(store)
+    }
+
     pub fn with_path(state_file: PathBuf) -> Result<Self> {
         if let Some(parent) = state_file.parent() {
             std::fs::create_dir_all(parent)?;
@@ -221,7 +281,8 @@ impl DeviceStateStore {
 
         // Load existing state if available
         if store.state_file.exists() {
-            store.load_sync()?;
+            let file_content = std::fs::read_to_string(&store.state_file)?;
+            store.load_from_str(&file_content)?;
         }
 
         // Start the write-behind background task
@@ -263,9 +324,11 @@ impl DeviceStateStore {
         states: &Arc<RwLock<HashMap<DeviceId, DeviceState>>>,
         state_file: &std::path::Path,
     ) -> Result<()> {
-        let serializable = {
+        let content = {
             let states_guard = states.read();
-            SerializableStates::from(&*states_guard)
+            let serializable = SerializableStatesRef(&states_guard);
+            serde_json::to_string_pretty(&serializable)
+                .map_err(|e| Error::SerializationMessage(format!("Failed to serialize state: {}", e)))?
         }; // Lock released here
 
         // Use atomic write with temp file to prevent corruption
@@ -276,18 +339,14 @@ impl DeviceStateStore {
         let state_file_clone = state_file.to_path_buf();
 
         tokio::task::spawn_blocking(move || -> Result<()> {
-            let content = serde_json::to_string_pretty(&serializable)
-                .map_err(|e| Error::SerializationMessage(format!("Failed to serialize state: {}", e)))?;
-
             #[cfg(unix)]
             {
                 use std::os::unix::fs::OpenOptionsExt;
+
                 let mut options = std::fs::OpenOptions::new();
                 options.write(true).create(true).truncate(true).mode(0o600);
 
-                let mut file = options
-                    .open(&temp_file_clone)
-                    .map_err(|e| Error::FileSystemError(format!("Failed to open temp file: {}", e)))?;
+                let mut file = crate::fs_utils::secure_open(&temp_file_clone, &options)?;
 
                 let mut perms = file
                     .metadata()
@@ -322,12 +381,10 @@ impl DeviceStateStore {
         Ok(())
     }
 
-    /// Load device states from disk synchronously (used during initialization).
-    fn load_sync(&mut self) -> Result<()> {
-        let content = std::fs::read_to_string(&self.state_file)?;
-
+    /// Load device states from a string synchronously (used during initialization).
+    fn load_from_str(&mut self, content: &str) -> Result<()> {
         // Try new format first (string-keyed map)
-        let loaded_states = if let Ok(serializable) = serde_json::from_str::<SerializableStates>(&content) {
+        let loaded_states = if let Ok(serializable) = serde_json::from_str::<SerializableStates>(content) {
             // Convert back to DeviceId-keyed map
             serializable
                 .0
@@ -337,12 +394,12 @@ impl DeviceStateStore {
         } else {
             // Try legacy format (direct HashMap<DeviceId, DeviceState>) for backward compat
             // This will likely fail on current broken files, which is expected
-            serde_json::from_str(&content)?
+            serde_json::from_str(content)?
         };
 
         // Update the async states
         *self.states.write() = loaded_states;
-        debug!("Loaded device states from disk synchronously");
+        debug!("Loaded device states from string synchronously");
         Ok(())
     }
 
@@ -522,6 +579,21 @@ impl DeviceStateStore {
         Ok(())
     }
 
+    /// Update multiple device states using a closure for maximum efficiency.
+    /// The closure receives a mutable reference to the internal state map and
+    /// should return true if any changes were made.
+    pub fn update_states_with<F>(&self, f: F) -> Result<()>
+    where
+        F: FnOnce(&mut HashMap<DeviceId, DeviceState>) -> bool,
+    {
+        let mut states = self.states.write();
+        if f(&mut *states) {
+            drop(states);
+            self.mark_dirty();
+        }
+        Ok(())
+    }
+
     /// List all devices with stored state.
     pub fn list_devices(&self) -> Vec<DeviceId> {
         let states = self.states.read();
@@ -571,7 +643,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let state_file = dir.path().join("device_state.json");
 
-        let store = DeviceStateStore::with_path(state_file.clone())?;
+        let store = DeviceStateStore::with_path_async(state_file.clone()).await?;
 
         let device_id = DeviceId {
             vendor_id: 0x1038,
@@ -594,10 +666,64 @@ mod tests {
         store.save().await?;
 
         // Create new store and verify load
-        let store2 = DeviceStateStore::with_path(state_file.clone())?;
+        let store2 = DeviceStateStore::with_path_async(state_file.clone()).await?;
         let loaded_state = store2.get(&device_id).expect("Should have state");
 
         assert_eq!(loaded_state.keyboard.unwrap(), keyboard_state);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_update_states_with() -> Result<()> {
+        let dir = tempdir().unwrap();
+        let state_file = dir.path().join("device_state.json");
+        let store = DeviceStateStore::with_path(state_file)?;
+
+        let device_id = DeviceId {
+            vendor_id: 0x1038,
+            product_id: 0x1234,
+            interface_number: 1,
+            serial_number: Some("serial123".to_string()),
+            path: Some("path/to/device".to_string()),
+        };
+
+        // 1. Initial update
+        store.update_states_with(|states| {
+            let state = states.entry(device_id.clone()).or_default();
+            state.keyboard = Some(KeyboardState {
+                effect: Effect::Static {
+                    color: crate::rgb::Color::RED,
+                },
+                brightness: 100,
+            });
+            true
+        })?;
+
+        assert!(store.dirty_flag.load(Ordering::SeqCst));
+        store.dirty_flag.store(false, Ordering::SeqCst);
+
+        // 2. No-op update
+        store.update_states_with(|_states| {
+            false
+        })?;
+
+        assert!(!store.dirty_flag.load(Ordering::SeqCst));
+
+        // 3. Update existing
+        store.update_states_with(|states| {
+            if let Some(state) = states.get_mut(&device_id) {
+                if let Some(ref mut k) = state.keyboard {
+                    k.brightness = 50;
+                    return true;
+                }
+            }
+            false
+        })?;
+
+        assert!(store.dirty_flag.load(Ordering::SeqCst));
+        let state = store.get(&device_id).unwrap();
+        assert_eq!(state.keyboard.unwrap().brightness, 50);
 
         Ok(())
     }
@@ -607,7 +733,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let state_file = dir.path().join("device_state.json");
 
-        let store = DeviceStateStore::with_path(state_file.clone())?;
+        let store = DeviceStateStore::with_path_async(state_file.clone()).await?;
 
         let device_id = DeviceId {
             vendor_id: 0x1038,
@@ -662,9 +788,9 @@ mod tests {
             legacy_id_str
         );
 
-        std::fs::write(&state_file, initial_json)?;
+        crate::fs_utils::secure_write(&state_file, initial_json)?;
 
-        let store = DeviceStateStore::with_path(state_file.clone())?;
+        let store = DeviceStateStore::with_path_async(state_file.clone()).await?;
 
         // New device ID with path/interface
         let new_device_id = DeviceId {
@@ -686,7 +812,7 @@ mod tests {
     async fn test_update_keyboard_effect() -> Result<()> {
         let dir = tempdir().unwrap();
         let state_file = dir.path().join("device_state.json");
-        let store = DeviceStateStore::with_path(state_file)?;
+        let store = DeviceStateStore::with_path_async(state_file).await?;
 
         let device_id = DeviceId {
             vendor_id: 0x1038,
@@ -757,7 +883,7 @@ mod tests {
         assert!(DeviceId::from_key("103G:1234:1:serial:none").is_err());
 
         // Invalid hex product_id
-        assert!(DeviceId::from_key("1038:XXXX:1:serial:none").is_err());
+        assert!(DeviceId::from_key("1038:G123:1:serial:none").is_err());
 
         // Invalid interface integer
         assert!(DeviceId::from_key("1038:1234:A:serial:none").is_err());
@@ -767,7 +893,7 @@ mod tests {
     async fn test_update_states_batch() -> Result<()> {
         let dir = tempdir().unwrap();
         let state_file = dir.path().join("device_state.json");
-        let store = DeviceStateStore::with_path(state_file)?;
+        let store = DeviceStateStore::with_path_async(state_file).await?;
 
         let k_id = DeviceId {
             vendor_id: 0x1038,
@@ -815,7 +941,7 @@ mod tests {
     async fn test_update_keyboard_brightness() -> Result<()> {
         let dir = tempdir().unwrap();
         let state_file = dir.path().join("device_state.json");
-        let store = DeviceStateStore::with_path(state_file)?;
+        let store = DeviceStateStore::with_path_async(state_file).await?;
 
         let device_id = DeviceId {
             vendor_id: 0x1038,

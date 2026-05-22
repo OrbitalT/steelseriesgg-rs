@@ -8,6 +8,7 @@ use tracing::{Level, debug, info, warn};
 use tracing_subscriber::FmtSubscriber;
 
 use steelseries_gg::config::Config;
+use steelseries_gg::fs_utils::{secure_write, secure_write_async};
 use steelseries_gg::device_state::{DeviceId, DeviceStateStore, KeyboardState};
 use steelseries_gg::devices::headsets::Headset;
 use steelseries_gg::devices::keyboards::Keyboard;
@@ -784,7 +785,7 @@ async fn cmd_rgb(manager: &DeviceManager, action: RgbAction) -> Result<()> {
     println!("Using keyboard: {}", keyboard_info.name);
 
     // Open device state store for persistence
-    let state_store = DeviceStateStore::new()?;
+    let state_store = DeviceStateStore::new_async().await?;
     let device_id = DeviceId::from(keyboard_info);
 
     // Open the keyboard using the abstraction layer
@@ -1315,7 +1316,7 @@ async fn cmd_profile(action: ProfileAction) -> Result<()> {
                 println!("Loading profile: {}", profile.name);
 
                 let device_manager = DeviceManager::new()?;
-                let state_store = DeviceStateStore::new()?;
+                let state_store = DeviceStateStore::new_async().await?;
 
                 // Apply keyboard settings if present
                 if let Some(ref keyboard_profile) = profile.keyboard {
@@ -1361,8 +1362,8 @@ async fn cmd_profile(action: ProfileAction) -> Result<()> {
         }
 
         ProfileAction::Save { name } => {
-            let mut profile = Profile::new(name);
-            let state_store = DeviceStateStore::new()?;
+            let mut profile = Profile::new(name.clone());
+            let state_store = DeviceStateStore::new_async().await?;
             let device_manager = DeviceManager::new()?;
 
             // Capture keyboard settings from state store
@@ -1785,7 +1786,7 @@ async fn cmd_validate(
             content
         };
 
-        tokio::fs::write(&output_path, export_content)
+        secure_write_async(output_path.clone(), export_content)
             .await
             .map_err(|e| Error::FileSystemError(format!("Failed to write report: {}", e)))?;
 
@@ -1966,7 +1967,7 @@ async fn cmd_performance(manager: &DeviceManager, action: PerformanceAction) -> 
                     "results": benchmark_results
                 });
 
-                std::fs::write(&output_path, serde_json::to_string_pretty(&benchmark_data)?)
+                secure_write(&output_path, serde_json::to_string_pretty(&benchmark_data)?)
                     .map_err(|e| Error::DeviceCommunication(format!("Failed to write benchmark: {}", e)))?;
 
                 println!("📄 Benchmark results exported to: {}", output_path);
@@ -2054,7 +2055,7 @@ fn export_performance_stats(
             "devices": all_stats
         });
 
-        std::fs::write(output_path, serde_json::to_string_pretty(&export_data)?)
+        secure_write(output_path, serde_json::to_string_pretty(&export_data)?)
             .map_err(|e| Error::DeviceCommunication(format!("Failed to write stats: {}", e)))?;
     } else {
         let mut content = String::new();
@@ -2090,7 +2091,7 @@ fn export_performance_stats(
             }
         }
 
-        std::fs::write(output_path, content)
+        secure_write(output_path, content)
             .map_err(|e| Error::DeviceCommunication(format!("Failed to write stats: {}", e)))?;
     }
 
@@ -2121,7 +2122,7 @@ struct DaemonState {
 
 impl DaemonState {
     async fn new() -> Result<Self> {
-        let state_store = DeviceStateStore::new()?;
+        let state_store = DeviceStateStore::new_async().await?;
         let profile_manager = ProfileManager::new().await.ok(); // Optional - don't fail if profiles unavailable
 
         Ok(Self {
@@ -2820,10 +2821,9 @@ async fn cmd_verify_performance(
 
     // Export to JSON if requested
     if let Some(output_path) = output {
-        use std::fs;
         let json = serde_json::to_string_pretty(&metrics)
             .map_err(|e| Error::Other(format!("Failed to serialize metrics: {}", e)))?;
-        fs::write(&output_path, json).map_err(|e| Error::Other(format!("Failed to write {}: {}", output_path, e)))?;
+        secure_write(&output_path, json).map_err(|e| Error::Other(format!("Failed to write {}: {}", output_path, e)))?;
         println!("\nMetrics exported to: {}", output_path);
     }
 
@@ -3254,21 +3254,37 @@ async fn wait_for_shutdown() -> Result<()> {
 
 async fn save_final_device_states(daemon_state: Arc<RwLock<DaemonState>>) {
     let state = daemon_state.read().await;
-    let mut keyboard_updates = Vec::new();
 
-    for (_keyboard, controller, info) in state.keyboards.values() {
-        let device_id = DeviceId::from(info);
-        let final_state = KeyboardState {
-            effect: controller.effect().clone(),
-            brightness: (controller.brightness() * 100.0) as u8,
-        };
-        keyboard_updates.push((device_id, final_state));
-    }
+    let update_result = state.state_store.update_states_with(|states| {
+        let mut changed = false;
+        for (_keyboard, controller, info) in state.keyboards.values() {
+            let brightness = (controller.brightness() * 100.0) as u8;
+            let effect = controller.effect();
 
-    // Currently we don't extract headset state, but we provide the empty vector for the batch call
-    let headset_updates = Vec::new();
+            // Find existing entry or create a new one. We only clone info to DeviceId if
+            // we really need to insert a new entry, or if we find it easier to use the entry API.
+            // Using loose match to avoid unnecessary DeviceId clones when possible.
+            let device_id = DeviceId::from(info);
+            let device_state = states.entry(device_id).or_default();
 
-    if let Err(e) = state.state_store.update_states(keyboard_updates, headset_updates) {
+            if let Some(ref mut k_state) = device_state.keyboard {
+                if k_state.brightness != brightness || &k_state.effect != effect {
+                    k_state.brightness = brightness;
+                    k_state.effect = effect.clone();
+                    changed = true;
+                }
+            } else {
+                device_state.keyboard = Some(KeyboardState {
+                    effect: effect.clone(),
+                    brightness,
+                });
+                changed = true;
+            }
+        }
+        changed
+    });
+
+    if let Err(e) = update_result {
         warn!("Failed to batch update final states: {}", e);
     } else {
         debug!(
