@@ -319,8 +319,10 @@ fn compute_color(color: &ColorHandler, value: i32) -> Option<(u8, u8, u8)> {
         ColorHandler::Gradient { gradient } => {
             let val = value.clamp(0, 100);
             let r = gradient.zero.red as i32 + ((gradient.hundred.red as i32 - gradient.zero.red as i32) * val) / 100;
-            let g = gradient.zero.green as i32 + ((gradient.hundred.green as i32 - gradient.zero.green as i32) * val) / 100;
-            let b = gradient.zero.blue as i32 + ((gradient.hundred.blue as i32 - gradient.zero.blue as i32) * val) / 100;
+            let g =
+                gradient.zero.green as i32 + ((gradient.hundred.green as i32 - gradient.zero.green as i32) * val) / 100;
+            let b =
+                gradient.zero.blue as i32 + ((gradient.hundred.blue as i32 - gradient.zero.blue as i32) * val) / 100;
             Some((r as u8, g as u8, b as u8))
         }
 
