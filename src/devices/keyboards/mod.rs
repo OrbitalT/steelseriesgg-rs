@@ -428,21 +428,17 @@ impl GenericKeyboard {
         super::send_feature_report_raw(&path, data, report_len)
     }
 
-    /// Send a HID feature report of arbitrary size (for Apex 2023 new protocol).
-    ///
-    /// On non-Unix platforms, raw hidraw feature reports are not supported and this
-    /// method will always return a platform-not-supported error.
     #[cfg(not(unix))]
-    pub fn send_feature(&self, _data: &[u8], _report_len: usize) -> Result<()> {
-        Err(Error::PlatformNotSupported(
-            "Raw HID feature reports are only supported on Unix-like platforms",
-        ))
-    }
-    #[cfg(not(unix))]
-    pub fn send_feature(&self, _data: &[u8], _report_len: usize) -> Result<()> {
-        Err(Error::DeviceCommunication(
-            "Raw HID feature reports are only supported on Unix platforms".to_string(),
-        ))
+    pub fn send_feature(&self, data: &[u8], _report_len: usize) -> Result<()> {
+        let device = self
+            .device
+            .as_ref()
+            .ok_or(Error::DeviceCommunication("Device not connected".to_string()))?;
+        let device = device.lock();
+
+        device
+            .send_feature_report(data)
+            .map_err(|e| Error::DeviceCommunication(e.to_string()))
     }
 
     async fn send_zone_buffer_async(&mut self) -> Result<()> {
