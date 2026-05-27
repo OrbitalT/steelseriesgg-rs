@@ -445,7 +445,9 @@ impl GenericKeyboard {
         // Wireless keyboards (e.g. Apex Pro TKL 2023 Wireless, PID 0x1632) don't
         // support the 0xFF "all zones" selector. Send per-zone commands instead,
         // with zone indices starting at 1.
-        if self.info.product_id == super::product_ids::APEX_PRO_TKL_2023_WIRELESS {
+        if self.info.product_id == super::product_ids::APEX_PRO_TKL_2023_WIRELESS
+            || self.info.product_id == super::product_ids::APEX_PRO_TKL_2023_WIRELESS_2
+        {
             for i in 0..self.zone_color_buffer.len() {
                 let color = self.zone_color_buffer[i];
                 let zone_index = (i + 1) as u8; // zones start at 1, not 0
