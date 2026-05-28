@@ -66,50 +66,26 @@ pub trait Keyboard: Device {
     }
 
     /// Set RGB color for a specific key by logical key ID.
-    ///
-    /// Uses the keyboard's key mapping to convert logical key IDs to HID codes.
-    /// Returns an error if the key is not found in the mapping or per-key RGB is not supported.
-    ///
-    /// ⚠️ **Experimental**: uses `CommandCode::PerKeyRgb` (`0x23`), a placeholder command whose
-    /// packet format has not been confirmed on hardware. The device may silently ignore this command.
     async fn set_key_color(&mut self, _key_id: KeyId, _color: Color) -> Result<()> {
         Err(Error::DeviceCommunication("Per-key RGB not supported".to_string()))
     }
 
     /// Set RGB colors for multiple keys by logical key IDs.
-    ///
-    /// Uses the keyboard's key mapping to convert logical key IDs to HID codes.
-    /// Keys not found in the mapping are ignored with a warning.
-    ///
-    /// ⚠️ **Experimental**: uses `CommandCode::PerKeyRgb` (`0x23`), a placeholder command whose
-    /// packet format has not been confirmed on hardware. The device may silently ignore this command.
     async fn set_key_colors(&mut self, _key_colors: &[(KeyId, Color)]) -> Result<()> {
         Ok(())
     }
 
     /// Set RGB color for a specific key by direct HID code address.
-    ///
-    /// Bypasses key mapping and directly addresses keys by USB HID Usage ID.
-    ///
-    /// ⚠️ **Experimental**: uses `CommandCode::PerKeyRgb` (`0x23`), a placeholder command whose
-    /// packet format has not been confirmed on hardware.
     async fn set_key_color_direct(&mut self, _address: KeyAddress, _color: Color) -> Result<()> {
         Ok(())
     }
 
     /// Set RGB colors for multiple keys by direct HID code addresses.
-    ///
-    /// Bypasses key mapping and directly addresses keys by USB HID Usage ID.
-    ///
-    /// ⚠️ **Experimental**: uses `CommandCode::PerKeyRgb` (`0x23`), a placeholder command whose
-    /// packet format has not been confirmed on hardware.
     async fn set_key_colors_direct(&mut self, _key_colors: &[(KeyAddress, Color)]) -> Result<()> {
         Ok(())
     }
 
     /// Set all keys to black (turn off per-key RGB).
-    ///
-    /// ⚠️ **Experimental**: uses `CommandCode::PerKeyRgb` (`0x23`); see `set_key_color`.
     async fn clear_per_key_rgb(&mut self) -> Result<()> {
         Ok(())
     }
@@ -618,7 +594,11 @@ impl Keyboard for GenericKeyboard {
             ));
         }
 
-        self.send_command_async(builder.build()).await
+        let command = builder.build();
+        for fragment in command.fragment_into_reports() {
+            self.send_command_async(fragment).await?;
+        }
+        Ok(())
     }
 
     async fn set_key_color_direct(&mut self, address: KeyAddress, color: Color) -> Result<()> {
@@ -952,7 +932,7 @@ macro_rules! impl_keyboard_with_delegation {
             fn get_key_mapping(&self) -> Option<&KeyMapping> { self.inner.get_key_mapping() }
             async fn set_key_color_direct(&mut self, address: KeyAddress, color: Color) -> Result<()> { self.inner.set_key_color_direct(address, color).await }
             async fn set_key_colors_direct(&mut self, key_colors: &[(KeyAddress, Color)]) -> Result<()> { self.inner.set_key_colors_direct(key_colors).await }
-            async fn clear_per_key_rgb(&mut self) -> Result<()> { self.inner.clear_per_key_rgb().await }
+            async fn clear_per_key_rgb(&mut self) -> Result<()> { self.set_color(Color::BLACK).await }
             async fn set_key_region(&mut self, start_hid: u8, count: u8, color: Color) -> Result<()> { self.inner.set_key_region(start_hid, count, color).await }
             fn get_zone_mapping(&self) -> Option<&ZoneMapping> { self.inner.get_zone_mapping() }
             async fn set_zone_effect(&mut self, effect: ZoneEffect) -> Result<()> { self.inner.set_zone_effect(effect).await }

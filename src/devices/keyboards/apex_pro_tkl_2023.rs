@@ -2,6 +2,8 @@
 
 use super::{GenericKeyboard, Keyboard};
 use crate::Result;
+#[cfg(feature = "experimental-apex-2023")]
+use crate::devices::hid_reports::APEX_2023_PERKEY_REPORT_SIZE;
 use crate::devices::hid_reports::{
     ActuationCommand, HidCommand, HidDeviceType, HidReportBuilder, KEYBOARD_REPORT_SIZE,
 };
@@ -259,13 +261,14 @@ impl ApexProTkl2023 {
         let mut command = Apex2023DirectCommand::new();
         for (key_id, color) in key_colors {
             let Some(direct_key_id) = Self::experimental_direct_key_id(*key_id) else {
-                tracing::debug!(
-                    "Falling back to placeholder Apex per-key path for unsupported experimental key {:?}",
-                    key_id
-                );
-                return None;
+                // Key not addressable via the 0x40 protocol (e.g. SteelSeries key, volume wheel)
+                continue;
             };
             command.set_key_color(direct_key_id, *color);
+        }
+
+        if command.is_empty() {
+            return None;
         }
 
         Some(command)
@@ -334,7 +337,7 @@ crate::impl_keyboard_with_delegation!(ApexProTkl2023, {
         #[cfg(feature = "experimental-apex-2023")]
         if let Some(command) = self.build_experimental_direct_command(key_colors) {
             let report_builder = HidReportBuilder::new(HidDeviceType::Keyboard);
-            let mut buffer = [0u8; KEYBOARD_REPORT_SIZE];
+            let mut buffer = [0u8; APEX_2023_PERKEY_REPORT_SIZE];
             let size = report_builder.build_report(command, &mut buffer)?;
             return self.inner.send_raw(&buffer[..size]);
         }

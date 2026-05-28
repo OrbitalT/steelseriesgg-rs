@@ -61,12 +61,33 @@ Commands are sent via `hid_send_feature_report()` (Windows: `HidD_SetFeature`) o
 
 ---
 
+### CONFIRMED — Apex Pro TKL 2023 per-key RGB (0x40)
+
+Captured via `IOCTL_HID_SET_FEATURE` (code `0x000B0191`) from `SteelSeriesEngine.exe` on 2026-05-27.
+
+**Packet layout — 645 bytes total:**
+
+```
+[0x00][0x40][0x54][key_id R G B] × 84 + [0x00 × 306]
+  ^     ^     ^    \--- repeated 84 times (336 bytes) ---/
+  |     |     |
+  |     |     count byte — always 0x54 = 84 (fixed)
+  |     command byte — 0x40
+  report ID — 0x00
+```
+
+- **key_id**: USB HID keyboard Usage ID (e.g. `0x04`=A, `0x28`=Enter, `0xE0`=Left Ctrl)
+- **R, G, B**: 0–255 color components
+- Keys are listed in physical layout order (not ascending Usage ID order)
+- Unused entries after the last key are zero-padded to fill 645 bytes
+- Sent via `DeviceIoControl`/`NtDeviceIoControlFile` with `IOCTL_HID_SET_FEATURE`, not `WriteFile`
+- Implementation: `Apex2023DirectCommand` in `src/devices/hid_reports.rs` (feature `experimental-apex-2023`)
+
 ### EXPERIMENTAL / PLACEHOLDER (not confirmed on hardware)
 
 | Byte | Name | Notes |
 |------|------|-------|
-| `0x23` | Per-Key RGB | Placeholder. HID keycode addressing confirmed (USB HID Usage IDs 0x04–0xFF). Exact packet structure unconfirmed — requires USB capture from official GG software. |
-| `0x40` | Apex 2023 Direct | Alternative per-key path under `experimental-apex-2023` feature flag. Unverified. |
+| `0x23` | Per-Key RGB | Placeholder for non-2023 keyboards. Exact packet structure unconfirmed. |
 
 ---
 
@@ -138,7 +159,8 @@ The following cannot be implemented without USB capture from official GG softwar
 | Actuation write (0x2D) | ✅ Experimental | `src/devices/keyboards/apex_pro_tkl_2023.rs::set_actuation_point` |
 | Reactive mode (0x25) | ✅ Working | `src/devices/keyboards/apex.rs::Apex3Tkl` |
 | Color shift (0x26) | ✅ Working | `src/devices/keyboards/apex.rs::Apex3Tkl` |
-| Per-key RGB (0x23) | ⚠️ Placeholder | `src/devices/hid_reports.rs::PerKeyRgbCommand` |
+| Per-key RGB (0x40, Apex 2023) | ✅ Confirmed | `src/devices/hid_reports.rs::Apex2023DirectCommand` (feature `experimental-apex-2023`) |
+| Per-key RGB (0x23, other) | ⚠️ Placeholder | `src/devices/hid_reports.rs::PerKeyRgbCommand` |
 | Actuation read-back | ❌ Unknown protocol | Needs USB capture |
 | Rapid Trigger | ❌ Unknown protocol | Needs USB capture |
 | Windows HID | ✅ Fixed | `src/devices/keyboards/mod.rs::send_feature` |

@@ -140,7 +140,7 @@ impl GameSenseServer {
         #[cfg(target_os = "macos")]
         let path = std::path::Path::new("/Library/Application Support/SteelSeries Engine 3/coreProps.json");
 
-        Self::write_secure_json(path, &props)
+        Self::write_secure_json(&path, &props)
     }
 
     /// Securely write JSON content to a file, ensuring correct permissions and ownership.
@@ -203,7 +203,7 @@ impl GameSenseServer {
 
             // Fallback for non-unix platforms
             let json = serde_json::to_string_pretty(content)?;
-            crate::fs_utils::secure_write(&path, json.as_bytes())?;
+            crate::fs_utils::secure_write(path, json.as_bytes())?;
 
             debug!("Wrote JSON to {:?}", path);
         }
