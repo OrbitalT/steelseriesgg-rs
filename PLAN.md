@@ -1,8 +1,8 @@
 ---
 goal: Prioritized implementation plan combining open GitHub issues and TODO backlog.
 date_created: 2026-03-17
-last_updated: 2026-05-22
-last_reviewed: 2026-05-22
+last_updated: 2026-05-28
+last_reviewed: 2026-05-28
 status: In Progress
 sources: GitHub issues #6, #165, #173, #211 · TODO.md · prior PLAN.md
 ---
@@ -37,14 +37,16 @@ active TODO backlog into a single prioritized implementation order.
 | Issue #120 — audio hang | 2026-03-27 | 5 s timeout added in `src/audio/pulse.rs` |
 | experimental-apex-2023 feature flag | 2026-03-26 | exists in `Cargo.toml` |
 | CLI command expansion (HidLogs, TestDevice, VerifyPerformance, Fuzz) | 2026-03-26 | subcommands present in `src/main.rs` |
+| Issue #211 — Arctis Nova Pro Omni PID `0x2290` | 2026-05-28 | const + match arms + tests in `src/devices/mod.rs` |
+| Issue #165 — Apex Pro TKL Wireless 2023 PID `0x1630` | 2026-05-28 | `APEX_PRO_TKL_2023_WIRELESS_2` registered in mod.rs + discovery.rs |
 
 ### Open — ranked by priority
 
 | # | Issue / Item | Priority | Phase |
 |---|--------------|----------|-------|
-| #211 | Arctis Nova Pro Omni not recognised (PID `0x2290`) | High | 1 |
-| #165 | Apex Pro TKL Wireless 2023 not recognised (PID `0x1630`) | High | 2 |
-| #173 | Apex 3 TKL — commands succeed but RGB does nothing | High | 3 |
+| #211 | ~~Arctis Nova Pro Omni not recognised (PID `0x2290`)~~ | ~~High~~ | **Done** |
+| #165 | ~~Apex Pro TKL Wireless 2023 not recognised (PID `0x1630`)~~ | ~~High~~ | **Done** |
+| #173 | Apex 3 TKL — commands succeed but RGB does nothing | High | 1 |
 | #6   | Fails to compile on Arch | Medium | 4 |
 | TODO | Apex Pro TKL 2023 key matrix RE (placeholder data) | Medium | 5 |
 | TODO | Protocol docs reconciliation | Low | 6 |
@@ -477,11 +479,8 @@ Phase 5 (Key matrix RE)      ──► requires RE session first  ──► Phas
 
 ## 14. Suggested next move
 
-Start with **Phase 1** (Arctis Nova Pro Omni PID registration). It is a self-contained
-registry addition — a single `const`, four match arms, and a unit test — with no protocol
-risk and immediate user impact.
+Phases 1 and 2 are complete. The next unblocked work is:
 
-Follow immediately with **Phase 2** (Apex Pro TKL Wireless `0x1630`), which is structurally
-identical.
-
-Both can be done in one sitting and committed together.
+- **Phase 3** (Apex 3 TKL RGB) — requires a USB HID capture from SteelSeries GG on Windows first; do not guess protocol bytes.
+- **Phase 4** (Arch compile) — independent investigation; check if issue #6 is still reproducible.
+- **Phases 6 & 7** (docs reconciliation + capability accuracy) — low-effort, unblocked, good for a quick sitting.
