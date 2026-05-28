@@ -48,3 +48,4 @@ mock_udev/pkgconfig/
 mock_udev/mock_udev.c
 mock_udev/mock_udev.o
 apexctl/
+*.pml
