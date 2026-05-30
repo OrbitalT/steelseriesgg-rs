@@ -25,6 +25,7 @@ nohup.out
 docs/archive/
 .serena/
 *.err
+*.etlx
 
 # Auto Claude data directory
 .auto-claude/
