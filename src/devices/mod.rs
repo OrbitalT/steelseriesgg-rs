@@ -327,6 +327,62 @@ pub fn find_hidraw_for_interface(vendor_id: u16, product_id: u16, interface: usi
     None
 }
 
+#[cfg(not(unix))]
+/// Find a HID device path for a specific USB interface of a device.
+/// On non-Linux platforms, enumerates via hidapi and matches by vendor/product ID
+/// and, for interface 3 (wireless control), by vendor-specific usage page (0xFF00).
+pub fn find_hidraw_for_interface(vendor_id: u16, product_id: u16, interface: usize) -> Option<String> {
+    let api = hidapi::HidApi::new().ok()?;
+    // First pass: try to match on usage page for the target interface.
+    // Interface 3 (wireless control) uses usage page 0xFF00 (vendor-specific).
+    for dev_info in api.device_list() {
+        if dev_info.vendor_id() == vendor_id && dev_info.product_id() == product_id {
+            let matches_interface = interface == 3 && dev_info.usage_page() == 0xFF00;
+            if matches_interface {
+                return dev_info.path().to_str().ok().map(str::to_owned);
+            }
+        }
+    }
+    // Second pass: return any interface with matching VID/PID as a fallback.
+    for dev_info in api.device_list() {
+        if dev_info.vendor_id() == vendor_id && dev_info.product_id() == product_id {
+            return dev_info.path().to_str().ok().map(str::to_owned);
+        }
+    }
+    None
+}
+
+#[cfg(not(unix))]
+/// Send a HID feature report using hidapi.
+/// On Linux the raw ioctl path is used instead to work around a hidapi direction-bit bug;
+/// on other platforms hidapi's send_feature_report works correctly.
+pub fn send_feature_report_raw(device_path: &str, data: &[u8], report_len: usize) -> Result<()> {
+    use std::ffi::CString;
+    use tracing::debug;
+
+    let mut report = vec![0u8; report_len];
+    let copy_len = data.len().min(report_len);
+    report[..copy_len].copy_from_slice(&data[..copy_len]);
+
+    debug!(
+        "Sending HID feature report via hidapi {}: len={}, cmd={:#04x}",
+        device_path,
+        report_len,
+        report.get(1).copied().unwrap_or(0)
+    );
+
+    let api = hidapi::HidApi::new().map_err(|e| Error::DeviceCommunication(format!("Failed to init HID API: {e}")))?;
+    let path =
+        CString::new(device_path).map_err(|e| Error::DeviceCommunication(format!("Invalid device path: {e}")))?;
+    let device = api
+        .open_path(&path)
+        .map_err(|e| Error::DeviceCommunication(format!("Failed to open {device_path}: {e}")))?;
+    device
+        .send_feature_report(&report)
+        .map_err(|e| Error::DeviceCommunication(format!("Feature report failed on {device_path}: {e}")))?;
+    Ok(())
+}
+
 pub mod product_ids {
     // Keyboards - Apex Series
     // Source: GG firmware registry (firmware/<VID<<16|PID>/version.json), 2026-05-26.

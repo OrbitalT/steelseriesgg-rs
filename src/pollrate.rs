@@ -4,7 +4,7 @@
 //! Requires root/sudo privileges to modify system files.
 
 use crate::{Error, Result};
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 use rustix::process::geteuid;
 
 /// USB polling rate options.
@@ -102,7 +102,7 @@ pub enum DeviceType {
 }
 
 impl DeviceType {
-    /// Get the sysfs path for this device type.
+    #[cfg(target_os = "linux")]
     fn sysfs_path(&self) -> &'static str {
         match self {
             DeviceType::Mouse => "/sys/module/usbhid/parameters/mousepoll",
@@ -119,38 +119,17 @@ impl DeviceType {
     }
 }
 
-/// Check if the current process is running as root.
-#[cfg(unix)]
+/// Check if the current process is running as root (Linux only).
+#[cfg(target_os = "linux")]
 fn is_root() -> bool {
     geteuid().as_raw() == 0
 }
 
-#[cfg(not(unix))]
-fn is_root() -> bool {
-    false
-}
-
 /// Set USB polling rate for a device type.
 ///
-/// # Arguments
-/// * `device_type` - The type of device (mouse or keyboard)
-/// * `rate` - The desired polling rate
-///
-/// # Errors
-/// Returns an error if:
-/// - The process doesn't have root privileges
-/// - The sysfs file doesn't exist or can't be written
-///
-/// # Example
-/// ```no_run
-/// use steelseries_gg::pollrate::{set_poll_rate, DeviceType, PollRate};
-///
-/// // Requires root privileges
-/// tokio::runtime::Runtime::new().unwrap().block_on(async {
-///     set_poll_rate(DeviceType::Mouse, PollRate::Hz1000).await
-/// })?;
-/// # Ok::<(), steelseries_gg::Error>(())
-/// ```
+/// On Linux this writes the kernel usbhid module parameter via sysfs and requires root.
+/// On other platforms this operation is not supported.
+#[cfg(target_os = "linux")]
 pub async fn set_poll_rate(device_type: DeviceType, rate: PollRate) -> Result<()> {
     if !is_root() {
         let bin_name = match std::env::current_exe() {
@@ -185,26 +164,35 @@ pub async fn set_poll_rate(device_type: DeviceType, rate: PollRate) -> Result<()
     Ok(())
 }
 
+#[cfg(not(target_os = "linux"))]
+#[allow(clippy::needless_return)]
+pub async fn set_poll_rate(device_type: DeviceType, rate: PollRate) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        let ms = 1000 / rate.to_hz();
+        return tokio::task::spawn_blocking(move || {
+            windows_hid_poll_ioctl(device_type, Some(ms))?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| Error::Other(format!("Blocking task error: {e}")))?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (device_type, rate);
+        Err(Error::Other(
+            "Poll rate control is not supported on this platform".to_string(),
+        ))
+    }
+}
+
 /// Get the current USB polling rate for a device type.
 ///
-/// # Arguments
-/// * `device_type` - The type of device (mouse or keyboard)
-///
-/// # Errors
-/// Returns an error if:
-/// - The sysfs file doesn't exist or can't be read
-/// - The value in the file is invalid
-///
-/// # Example
-/// ```no_run
-/// use steelseries_gg::pollrate::{get_poll_rate, DeviceType};
-///
-/// let rate = tokio::runtime::Runtime::new().unwrap().block_on(async {
-///     get_poll_rate(DeviceType::Mouse).await
-/// })?;
-/// println!("Current mouse poll rate: {} Hz", rate.to_hz());
-/// # Ok::<(), steelseries_gg::Error>(())
-/// ```
+/// On Linux this reads the kernel usbhid module parameter via sysfs.
+/// A sysfs value of 0 means no kernel override is active; the device runs at its
+/// hardware default interval (typically 1000 Hz for SteelSeries keyboards).
+/// On Windows this queries the HID class driver via IOCTL_HID_GET_POLL_FREQUENCY_MSEC.
+#[cfg(target_os = "linux")]
 pub async fn get_poll_rate(device_type: DeviceType) -> Result<PollRate> {
     let path = device_type.sysfs_path();
 
@@ -223,7 +211,164 @@ pub async fn get_poll_rate(device_type: DeviceType) -> Result<PollRate> {
         .parse()
         .map_err(|e| Error::InvalidConfig(format!("Invalid poll rate value in {}: {}", path, e)))?;
 
+    // sysfs value 0 means the kernel has no override and the device uses its
+    // hardware bInterval. SteelSeries keyboards default to 1000 Hz.
+    if value == 0 {
+        return Ok(PollRate::Hz1000);
+    }
+
     PollRate::from_sysfs_value(value)
+}
+
+#[cfg(not(target_os = "linux"))]
+#[allow(clippy::needless_return)]
+pub async fn get_poll_rate(device_type: DeviceType) -> Result<PollRate> {
+    #[cfg(target_os = "windows")]
+    {
+        return tokio::task::spawn_blocking(move || {
+            let ms = windows_hid_poll_ioctl(device_type, None)?;
+            // 0 ms means the driver is using the device's native hardware interval
+            // (typically 1 ms = 1000 Hz for SteelSeries keyboards).
+            if ms == 0 {
+                return Ok(PollRate::Hz1000);
+            }
+            let hz = 1000u32 / ms;
+            PollRate::from_hz(hz)
+        })
+        .await
+        .map_err(|e| Error::Other(format!("Blocking task error: {e}")))?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = device_type;
+        Err(Error::Other(
+            "Poll rate detection is not supported on this platform".to_string(),
+        ))
+    }
+}
+
+/// Send a Windows HID poll-frequency IOCTL.
+///
+/// `set_ms = None`      → GET; returns the current interval in milliseconds.
+/// `set_ms = Some(ms)`  → SET; programs the interval and returns ms on success.
+///
+/// Uses `IOCTL_HID_GET_POLL_FREQUENCY_MSEC` / `IOCTL_HID_SET_POLL_FREQUENCY_MSEC`
+/// (hidclass.sys, FILE_ANY_ACCESS — no elevated privileges required for GET;
+///  SET may be restricted depending on the Windows version and driver).
+#[cfg(target_os = "windows")]
+fn windows_hid_poll_ioctl(device_type: DeviceType, set_ms: Option<u32>) -> Result<u32> {
+    use hidapi::HidApi;
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING};
+    use windows_sys::Win32::System::IO::DeviceIoControl;
+
+    // HID_CTL_CODE(n) = CTL_CODE(FILE_DEVICE_KEYBOARD=0x0B, n, METHOD_BUFFERED=0, FILE_ANY_ACCESS=0)
+    const IOCTL_HID_GET_POLL_FREQUENCY_MSEC: u32 = 0x000B_0024; // HID_CTL_CODE(9)
+    const IOCTL_HID_SET_POLL_FREQUENCY_MSEC: u32 = 0x000B_0028; // HID_CTL_CODE(10)
+
+    let (usage_page, usage): (u16, u16) = match device_type {
+        DeviceType::Keyboard => (0x0001, 0x0006), // Generic Desktop / Keyboard
+        DeviceType::Mouse => (0x0001, 0x0002),    // Generic Desktop / Mouse
+    };
+
+    let api = HidApi::new().map_err(|e| Error::DeviceCommunication(format!("HID API init failed: {e}")))?;
+
+    let path = api
+        .device_list()
+        .find(|d| d.vendor_id() == crate::STEELSERIES_VENDOR_ID && d.usage_page() == usage_page && d.usage() == usage)
+        .ok_or_else(|| {
+            Error::DeviceNotFound(format!(
+                "No SteelSeries {} found for poll-rate query",
+                device_type.name()
+            ))
+        })?
+        .path()
+        .to_string_lossy()
+        .into_owned();
+
+    let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+
+    // FILE_ANY_ACCESS (dwDesiredAccess = 0) is sufficient for both GET and SET IOCTLs.
+    let handle = unsafe {
+        CreateFileW(
+            wide.as_ptr(),
+            0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            std::ptr::null(),
+            OPEN_EXISTING,
+            0,
+            0,
+        )
+    };
+
+    if handle == INVALID_HANDLE_VALUE {
+        return Err(Error::DeviceCommunication(format!(
+            "Failed to open HID device '{}': {}",
+            path,
+            std::io::Error::last_os_error()
+        )));
+    }
+
+    let result: Result<u32> = if let Some(ms) = set_ms {
+        let mut bytes_ret: u32 = 0;
+        let ok = unsafe {
+            DeviceIoControl(
+                handle,
+                IOCTL_HID_SET_POLL_FREQUENCY_MSEC,
+                (&ms as *const u32).cast(),
+                std::mem::size_of::<u32>() as u32,
+                std::ptr::null_mut(),
+                0,
+                &mut bytes_ret,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            Err(Error::DeviceCommunication(format!(
+                "IOCTL_HID_SET_POLL_FREQUENCY_MSEC failed: {}",
+                std::io::Error::last_os_error()
+            )))
+        } else {
+            Ok(ms)
+        }
+    } else {
+        let mut poll_ms: u32 = 0;
+        let mut bytes_ret: u32 = 0;
+        let ok = unsafe {
+            DeviceIoControl(
+                handle,
+                IOCTL_HID_GET_POLL_FREQUENCY_MSEC,
+                std::ptr::null(),
+                0,
+                (&mut poll_ms as *mut u32).cast(),
+                std::mem::size_of::<u32>() as u32,
+                &mut bytes_ret,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            let os_err = std::io::Error::last_os_error();
+            // ERROR_INVALID_FUNCTION (1): driver doesn't implement this IOCTL.
+            // hidusb.sys (USB HID) never supports it; only PS/2 kbdhid does.
+            if os_err.raw_os_error() == Some(1) {
+                Err(Error::DeviceCommunication(
+                    "Poll rate query is not supported by this device's HID driver. \
+                     USB HID devices (including SteelSeries keyboards) do not expose \
+                     poll rate via the Windows HID class IOCTL interface."
+                        .into(),
+                ))
+            } else {
+                Err(Error::DeviceCommunication(format!(
+                    "IOCTL_HID_GET_POLL_FREQUENCY_MSEC failed: {os_err}"
+                )))
+            }
+        } else {
+            Ok(poll_ms)
+        }
+    };
+
+    unsafe { CloseHandle(handle) };
+    result
 }
 
 #[cfg(test)]
@@ -278,6 +423,7 @@ mod tests {
         assert!(PollRate::Hz4000.description().contains("hardware support"));
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn test_device_type_paths() {
         assert_eq!(

@@ -49,7 +49,7 @@ colored = "3.1.1"
 
 # Configuration
 directories = "6.0.0"
-hidapi = { version = "=2.6.6", default-features = false, features = ["linux-native-basic-udev"] }
+# hidapi is configured per-platform — see [target.*] sections below
 
 # Terminal UI
 indicatif = "0.18.4"
@@ -80,6 +80,20 @@ tower-http = { version = "0.6.11", default-features = false, features = ["cors"]
 # Logging
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+hidapi = { version = "=2.6.6", default-features = false, features = ["linux-native-basic-udev"] }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+hidapi = { version = "=2.6.6" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.52", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

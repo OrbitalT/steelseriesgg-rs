@@ -1109,6 +1109,70 @@ impl PerKeyRgbController {
     }
 }
 
+impl RgbController {
+    /// Create a new RGB controller.
+    pub fn new(zone_count: usize) -> Self {
+        Self {
+            engine: EffectEngine::new(Effect::default(), zone_count),
+            brightness: 1.0,
+            scaled_colors: Vec::with_capacity(zone_count),
+        }
+    }
+
+    /// Set the lighting effect.
+    pub fn set_effect(&mut self, effect: Effect) {
+        self.engine.set_effect(effect);
+    }
+
+    /// Set brightness (0.0 to 1.0).
+    pub fn set_brightness(&mut self, brightness: f32) {
+        self.brightness = brightness.clamp(0.0, 1.0);
+    }
+
+    /// Get current brightness.
+    pub fn brightness(&self) -> f32 {
+        self.brightness
+    }
+
+    /// Get the current effect.
+    pub fn effect(&self) -> &Effect {
+        self.engine.effect()
+    }
+
+    /// Get the current timing mode.
+    pub fn timing_mode(&self) -> TimingMode {
+        self.engine.timing_mode()
+    }
+
+    /// Set the timing mode.
+    pub fn set_timing_mode(&mut self, mode: TimingMode) {
+        self.engine.set_timing_mode(mode);
+    }
+
+    /// Calculate frame budget for the current effect and timing mode.
+    pub fn calculate_frame_budget(&self) -> Duration {
+        self.engine.calculate_frame_budget()
+    }
+
+    /// Compute current colors with brightness applied.
+    /// This method reuses an internal buffer to avoid allocations.
+    #[inline]
+    pub fn compute_colors(&mut self) -> &[Color] {
+        let colors = self.engine.compute();
+
+        // If brightness is 1.0, we can return the colors directly without scaling
+        if (self.brightness - 1.0).abs() < f32::EPSILON {
+            return colors;
+        }
+
+        // Apply brightness scaling reusing internal buffer
+        self.scaled_colors.clear();
+        self.scaled_colors
+            .extend(colors.iter().map(|c| c.scale(self.brightness)));
+        &self.scaled_colors
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1275,69 +1339,5 @@ mod tests {
             println!("{} iterations took {:?}", iterations, elapsed);
             println!("Average time per iteration: {:?}", elapsed / iterations);
         }
-    }
-}
-
-impl RgbController {
-    /// Create a new RGB controller.
-    pub fn new(zone_count: usize) -> Self {
-        Self {
-            engine: EffectEngine::new(Effect::default(), zone_count),
-            brightness: 1.0,
-            scaled_colors: Vec::with_capacity(zone_count),
-        }
-    }
-
-    /// Set the lighting effect.
-    pub fn set_effect(&mut self, effect: Effect) {
-        self.engine.set_effect(effect);
-    }
-
-    /// Set brightness (0.0 to 1.0).
-    pub fn set_brightness(&mut self, brightness: f32) {
-        self.brightness = brightness.clamp(0.0, 1.0);
-    }
-
-    /// Get current brightness.
-    pub fn brightness(&self) -> f32 {
-        self.brightness
-    }
-
-    /// Get the current effect.
-    pub fn effect(&self) -> &Effect {
-        self.engine.effect()
-    }
-
-    /// Get the current timing mode.
-    pub fn timing_mode(&self) -> TimingMode {
-        self.engine.timing_mode()
-    }
-
-    /// Set the timing mode.
-    pub fn set_timing_mode(&mut self, mode: TimingMode) {
-        self.engine.set_timing_mode(mode);
-    }
-
-    /// Calculate frame budget for the current effect and timing mode.
-    pub fn calculate_frame_budget(&self) -> Duration {
-        self.engine.calculate_frame_budget()
-    }
-
-    /// Compute current colors with brightness applied.
-    /// This method reuses an internal buffer to avoid allocations.
-    #[inline]
-    pub fn compute_colors(&mut self) -> &[Color] {
-        let colors = self.engine.compute();
-
-        // If brightness is 1.0, we can return the colors directly without scaling
-        if (self.brightness - 1.0).abs() < f32::EPSILON {
-            return colors;
-        }
-
-        // Apply brightness scaling reusing internal buffer
-        self.scaled_colors.clear();
-        self.scaled_colors
-            .extend(colors.iter().map(|c| c.scale(self.brightness)));
-        &self.scaled_colors
     }
 }

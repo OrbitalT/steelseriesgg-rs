@@ -225,9 +225,23 @@ impl DeviceManager {
         self.devices.values().collect()
     }
 
-    /// Get devices of a specific type.
+    /// Get devices of a specific type, deduplicated by physical device.
+    ///
+    /// USB HID devices (e.g. Apex Pro TKL 2023) expose multiple HID interfaces
+    /// under a single physical device.  Each interface appears as a separate entry
+    /// from hidapi, all sharing the same product ID and serial number.  This method
+    /// returns one representative `DeviceInfo` per physical device so callers don't
+    /// accidentally open or list the same device multiple times.
+    ///
+    /// `open_device` ignores the interface number stored in `DeviceInfo` and always
+    /// opens the correct control interface, so any representative is safe to pass.
     pub fn devices_by_type(&self, device_type: DeviceType) -> Vec<&DeviceInfo> {
-        self.devices.values().filter(|d| d.device_type == device_type).collect()
+        let mut seen: std::collections::HashSet<(u16, Option<&str>)> = std::collections::HashSet::new();
+        self.devices
+            .values()
+            .filter(|d| d.device_type == device_type)
+            .filter(|d| seen.insert((d.product_id, d.serial_number.as_deref())))
+            .collect()
     }
 
     /// Get all keyboards.
