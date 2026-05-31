@@ -19,9 +19,12 @@ source=(
 sha256sums=('SKIP')
 
 _archive_dir="steelseriesgg-rs-$pkgver"
-_cargo_home="$srcdir/cargo-home"
-_cargo_target_dir="$srcdir/target"
 _rust_target="$CARCH-unknown-linux-gnu"
+
+# NOTE: $srcdir is only populated when makepkg invokes the build functions, not
+# while the PKGBUILD is sourced. Deriving CARGO_HOME/CARGO_TARGET_DIR at parse
+# time would expand to /cargo-home and /target, which the unprivileged build
+# user cannot write to. Reference $srcdir inside the functions instead.
 
 _resolve_archive_dir() {
   local candidate
@@ -42,27 +45,27 @@ _resolve_archive_dir() {
 
 prepare() {
   cd "$(_resolve_archive_dir)" || return 1
-  export CARGO_HOME="$_cargo_home"
+  export CARGO_HOME="$srcdir/cargo-home"
   cargo fetch --locked --target "$_rust_target"
 }
 
 build() {
   cd "$(_resolve_archive_dir)" || return 1
-  export CARGO_HOME="$_cargo_home"
-  export CARGO_TARGET_DIR="$_cargo_target_dir"
+  export CARGO_HOME="$srcdir/cargo-home"
+  export CARGO_TARGET_DIR="$srcdir/target"
   cargo build --release --frozen --bin ssgg
 }
 
 check() {
   cd "$(_resolve_archive_dir)" || return 1
-  export CARGO_HOME="$_cargo_home"
-  export CARGO_TARGET_DIR="$_cargo_target_dir"
+  export CARGO_HOME="$srcdir/cargo-home"
+  export CARGO_TARGET_DIR="$srcdir/target"
   cargo test --frozen
 }
 
 package() {
   cd "$(_resolve_archive_dir)" || return 1
-  install -Dm755 "$_cargo_target_dir/release/ssgg" "$pkgdir/usr/bin/ssgg"
+  install -Dm755 "$srcdir/target/release/ssgg" "$pkgdir/usr/bin/ssgg"
   install -Dm644 assets/ssgg.service "$pkgdir/usr/lib/systemd/user/ssgg.service"
   install -Dm644 assets/99-steelseries.rules "$pkgdir/usr/lib/udev/rules.d/99-steelseries.rules"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
