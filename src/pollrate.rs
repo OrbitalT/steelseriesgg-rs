@@ -297,7 +297,7 @@ fn windows_hid_poll_ioctl(device_type: DeviceType, set_ms: Option<u32>) -> Resul
             std::ptr::null(),
             OPEN_EXISTING,
             0,
-            0,
+            std::ptr::null_mut(),
         )
     };
 
