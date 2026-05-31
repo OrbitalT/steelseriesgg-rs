@@ -1,0 +1,63 @@
+name: Build Arch Linux
+
+on:
+  workflow_dispatch:
+    inputs:
+      features:
+        description: "Cargo feature flags (e.g. --features sonar)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  build-arch:
+    name: Build Arch Linux Package
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --needed --noconfirm git rust systemd
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create unprivileged build user (makepkg refuses to run as root)
+        run: |
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builder:builder .
+
+      - name: Build Arch package
+        env:
+          EXTRA_FEATURES: ${{ github.event.inputs.features }}
+        run: |
+          PKGVER=$(sed -n 's/^pkgver=//p' PKGBUILD | head -n1)
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git archive \
+            --format=tar \
+            --prefix="steelseriesgg-rs-${PKGVER}/" \
+            --output="ssgg-${PKGVER}.tar" \
+            HEAD
+          gzip -n "ssgg-${PKGVER}.tar"
+          su - builder -c "cd \"$GITHUB_WORKSPACE\" && SRCDEST=\"$GITHUB_WORKSPACE\" makepkg -sCf --noconfirm"
+
+      - name: Compute checksums
+        run: |
+          sha256sum *.pkg.tar.zst > sha256sums.txt
+          cat sha256sums.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssgg-arch-x86_64
+          path: |
+            *.pkg.tar.zst
+            sha256sums.txt
+          retention-days: 30

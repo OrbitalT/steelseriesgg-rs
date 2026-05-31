@@ -1,20 +1,66 @@
 # Cargo build configuration for steelseriesgg-rs
 #
-# This file configures compiler flags and build tools.
-# Some optimizations are commented out as they require additional setup:
+# Linker options (pick ONE per target — do not combine):
 #
-# - sccache: Compilation cache (install: `cargo install sccache`)
-# - lld: LLVM linker (install: `sudo apt install lld` or equivalent)
-# - -Zthreads: Parallel codegen (requires nightly Rust)
+#   mold   — fastest, install: `sudo apt install mold` or `cargo install mold`
+#   lld    — LLVM linker, install: `sudo apt install lld`
+#   ld.bfd — default GNU linker, no install needed (slowest)
+#
+# sccache — compilation cache, install: `cargo install sccache`
+# Uncomment the rustc-wrapper line below to enable it globally.
 
 [build]
-# rustflags = ["-Ctarget-cpu=native"]
-# Uncomment if you have sccache installed:
 # rustc-wrapper = "sccache"
 
+# Explicit RUSTFLAGS for all targets. Split-debuginfo=packed keeps debug info
+# in the binary for profiling without bloating release builds further.
+# Remove -Csplit-debuginfo if you are not doing performance profiling.
+# rustflags = ["-Csplit-debuginfo=packed"]
+
+# ---------------------------------------------------------------------------
+# Linux x86_64
+# ---------------------------------------------------------------------------
 [target.x86_64-unknown-linux-gnu]
-# # rustflags = ["-Ctarget-cpu=native"]
-# Replace the rustflags line above with this one if you have lld installed for faster linking (do not use both):
+# mold (fastest): uncomment if installed
+# rustflags = ["-Clink-arg=-fuse-ld=mold"]
+
+# lld (fast): uncomment if installed, comment out mold line above
 # rustflags = ["-Clink-arg=-fuse-ld=lld"]
 
-# Project-wide release profile settings live in Cargo.toml.
+# native CPU tuning — faster binary, but NOT portable across machines
+# rustflags = ["-Ctarget-cpu=native"]
+
+# ---------------------------------------------------------------------------
+# Linux aarch64 (cross-compile from x86_64)
+# Requires: sudo apt install gcc-aarch64-linux-gnu
+# ---------------------------------------------------------------------------
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+# rustflags = ["-Clink-arg=-fuse-ld=lld"]
+
+# ---------------------------------------------------------------------------
+# Windows x86_64 (cross-compile from Linux via MinGW)
+# Requires: sudo apt install gcc-mingw-w64-x86-64
+# ---------------------------------------------------------------------------
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+ar = "x86_64-w64-mingw32-ar"
+
+# ---------------------------------------------------------------------------
+# Alias shortcuts
+# ---------------------------------------------------------------------------
+[alias]
+# Build the release binary with all warnings promoted to errors (mirrors CI)
+build-ci     = "build --release --locked"
+clippy-ci    = "clippy --all-targets --locked -- -D warnings"
+fmt-ci       = "fmt --all -- --check"
+test-ci      = "test --locked"
+
+# Build with Sonar integration
+build-sonar  = "build --release --locked --features sonar"
+
+# Build with PulseAudio/PipeWire (requires libpulse-dev)
+build-audio  = "build --release --locked --features audio"
+
+# Build experimental Apex Pro TKL 2023 per-key RGB support
+build-apex23 = "build --release --locked --features experimental-apex-2023"
