@@ -1,17 +1,16 @@
 name: Release
 
-# Triggered by pushing a semver tag: git tag v1.2.3 && git push origin v1.2.3
+# Builds the Linux release binaries and attaches them to the GitHub Release that
+# release-please creates for a v* tag. Versioning and CHANGELOG.md are handled by
+# release-please (.github/workflows/release-please.yml); this workflow only
+# produces and uploads artifacts. build-windows.yml and build-arch.yml attach
+# their own artifacts to the same release in the same way.
+
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (without leading v, e.g. 0.1.0)'
-        required: true
-        type: string
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+      - "v*.*.*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -20,222 +19,39 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # -------------------------------------------------------------------------
-  # Extract the changelog section for this tag and verify Cargo.toml matches
-  # -------------------------------------------------------------------------
-  prepare:
-    name: Prepare Release Notes
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      release_notes: ${{ steps.notes.outputs.release_notes }}
-
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
-      - name: Resolve version
-        id: version
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${GITHUB_REF_NAME#v}"
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Releasing v$VERSION"
-
-      - name: Create tag if missing
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          TAG="v${VERSION}"
-          # Check if the tag already exists on the remote
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/git/ref/tags/${TAG}")
-          if [[ "$STATUS" == "200" ]]; then
-            echo "Tag $TAG already exists — skipping creation"
-          else
-            SHA=$(curl -s \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}" \
-              | jq -r '.sha')
-            curl -s -X POST \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Content-Type: application/json" \
-              "https://api.github.com/repos/${{ github.repository }}/git/refs" \
-              -d "{\"ref\":\"refs/tags/${TAG}\",\"sha\":\"${SHA}\"}" \
-              | jq .
-            echo "Created tag $TAG at $SHA"
-          fi
-
-      - name: Verify Cargo.toml version matches tag
-        run: |
-          CARGO_VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*= *"\(.*\)"/\1/')
-          TAG_VERSION="${{ steps.version.outputs.version }}"
-          if [[ "$CARGO_VERSION" != "$TAG_VERSION" ]]; then
-            echo "::error::Cargo.toml version ($CARGO_VERSION) does not match tag ($TAG_VERSION)"
-            exit 1
-          fi
-
-      - name: Extract changelog section
-        id: notes
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          # Extract everything between ## [VERSION] and the next ## [
-          NOTES=$(awk "/^## \[$VERSION\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
-          if [[ -z "$NOTES" ]]; then
-            echo "::warning::No CHANGELOG.md section found for v$VERSION — using generic notes"
-            NOTES="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
-          fi
-          # Write to file to preserve newlines, then load into output
-          echo "$NOTES" > /tmp/release_notes.md
-          {
-            echo "release_notes<<RELEASE_NOTES_EOF"
-            cat /tmp/release_notes.md
-            echo "RELEASE_NOTES_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-  # -------------------------------------------------------------------------
-  # Build: Arch Linux .pkg.tar.zst
-  # -------------------------------------------------------------------------
-  build-arch:
-    name: Build Arch Linux Package
-    needs: prepare
-    runs-on: ubuntu-latest
-    container:
-      image: archlinux:base-devel
-
-    steps:
-      - name: Install dependencies
-        run: |
-          pacman -Syu --noconfirm
-          pacman -S --needed --noconfirm git rust systemd
-
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Create build user
-        run: |
-          useradd -m builder
-          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-          chown -R builder:builder .
-
-      - name: Verify PKGBUILD version matches tag
-        run: |
-          PKGVER=$(sed -n 's/^pkgver=//p' PKGBUILD | head -n1)
-          TAG_VERSION="${{ needs.prepare.outputs.version }}"
-          if [[ "$PKGVER" != "$TAG_VERSION" ]]; then
-            echo "::error::PKGBUILD pkgver ($PKGVER) does not match tag ($TAG_VERSION)"
-            exit 1
-          fi
-
-      - name: Build package
-        run: |
-          PKGVER="${{ needs.prepare.outputs.version }}"
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git archive \
-            --format=tar \
-            --prefix="steelseriesgg-rs-${PKGVER}/" \
-            --output="ssgg-${PKGVER}.tar" \
-            HEAD
-          gzip -n "ssgg-${PKGVER}.tar"
-          su - builder -c "cd \"$GITHUB_WORKSPACE\" && SRCDEST=\"$GITHUB_WORKSPACE\" makepkg -sCf --noconfirm"
-
-      - name: Compute checksums
-        run: sha256sum *.pkg.tar.zst > sha256sums-arch.txt
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: arch-package
-          path: |
-            *.pkg.tar.zst
-            sha256sums-arch.txt
-
-  # -------------------------------------------------------------------------
-  # Build: Windows x86_64 .exe
-  # -------------------------------------------------------------------------
-  build-windows:
-    name: Build Windows x86_64
-    needs: prepare
-    runs-on: windows-latest
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.1
-          targets: x86_64-pc-windows-msvc
+          targets: ${{ matrix.target }}
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+      - name: Install cross-compilation tools
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
 
       - name: Build release binary
-        run: cargo build --release --locked
+        run: cargo build --release --locked --target ${{ matrix.target }}
 
-      - name: Compute SHA-256
-        shell: pwsh
-        run: |
-          $hash = (Get-FileHash target\release\ssgg.exe -Algorithm SHA256).Hash.ToLower()
-          "$hash  ssgg-windows-x86_64.exe" | Out-File -Encoding ascii sha256sums-windows.txt
-          Copy-Item target\release\ssgg.exe ssgg-windows-x86_64.exe
-          Get-Content sha256sums-windows.txt
+      - name: Package binary
+        run: tar -C target/${{ matrix.target }}/release -czf ssgg-${{ matrix.target }}.tar.gz ssgg
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
-          name: windows-exe
-          path: |
-            ssgg-windows-x86_64.exe
-            sha256sums-windows.txt
-
-  # -------------------------------------------------------------------------
-  # Create GitHub Release with both artifacts and changelog body
-  # -------------------------------------------------------------------------
-  release:
-    name: Create GitHub Release
-    needs: [prepare, build-arch, build-windows]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download Arch artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: arch-package
-          path: dist/
-
-      - name: Download Windows artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: windows-exe
-          path: dist/
-
-      - name: Merge checksums
-        run: |
-          cd dist
-          cat sha256sums-arch.txt sha256sums-windows.txt > sha256sums.txt
-          rm sha256sums-arch.txt sha256sums-windows.txt
-          cat sha256sums.txt
-
-      - name: Create release
-        uses: softprops/action-gh-release@v3
-        with:
-          name: "v${{ needs.prepare.outputs.version }}"
-          tag_name: "v${{ needs.prepare.outputs.version }}"
-          body: |
-            ## What's Changed
-
-            ${{ needs.prepare.outputs.release_notes }}
-
-            ---
-            **SHA-256 checksums** are in `sha256sums.txt` attached below.
-          files: dist/*
-          fail_on_unmatched_files: true
-          draft: false
-          prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
+          files: ssgg-${{ matrix.target }}.tar.gz

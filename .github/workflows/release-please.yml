@@ -1,0 +1,27 @@
+name: Release Please
+
+# Maintains CHANGELOG.md (Keep a Changelog format) and the crate version from
+# Conventional Commits. On every push to main it opens or updates a release
+# pull request; merging that PR tags v{version} and publishes a GitHub Release
+# whose notes are the new changelog section. The tag then triggers the binary
+# build workflows (release.yml, build-windows.yml, build-arch.yml), which attach
+# their artifacts to that release.
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Release please
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
