@@ -38,7 +38,10 @@ jobs:
         env:
           EXTRA_FEATURES: ${{ github.event.inputs.features }}
         run: |
-          PKGVER=$(sed -n 's/^pkgver=//p' PKGBUILD | head -n1)
+          # Capture only the version token; the pkgver line carries a trailing
+          # `# x-release-please-version` marker that makepkg ignores but a naive
+          # parse would otherwise include.
+          PKGVER=$(sed -n 's/^pkgver=\([^ ]*\).*/\1/p' PKGBUILD | head -n1)
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git archive \
             --format=tar \
