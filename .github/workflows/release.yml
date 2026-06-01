@@ -1,10 +1,13 @@
 name: Release
 
-# Builds the Linux release binaries and attaches them to the GitHub Release that
-# release-please creates for a v* tag. Versioning and CHANGELOG.md are handled by
-# release-please (.github/workflows/release-please.yml); this workflow only
-# produces and uploads artifacts. build-windows.yml and build-arch.yml attach
-# their own artifacts to the same release in the same way.
+# Builds the Linux release binaries and uploads them as assets on the GitHub
+# Release that release-please creates for a v* tag. Versioning and CHANGELOG.md
+# are handled by release-please (.github/workflows/release-please.yml); this
+# workflow only produces and uploads artifacts.
+#
+# build-windows.yml and build-arch.yml are separate, manually triggered
+# (workflow_dispatch) builds that publish to the workflow run via
+# actions/upload-artifact; they do not attach assets to the GitHub Release.
 
 on:
   push:
@@ -34,7 +37,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.94.1
+          toolchain: 1.96.0
           targets: ${{ matrix.target }}
 
       - name: Install cross-compilation tools
