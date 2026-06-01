@@ -3,8 +3,8 @@ name: Release Please
 # Maintains CHANGELOG.md (Keep a Changelog format) and the crate version from
 # Conventional Commits. On every push to main it opens or updates a release
 # pull request; merging that PR tags v{version} and publishes a GitHub Release
-# whose notes are the new changelog section. The tag then triggers the binary
-# build workflows (release.yml, build-windows.yml, build-arch.yml), which attach
+# whose notes are the new changelog section.
+# The tag then triggers binary build workflows (e.g. release.yml) to upload assets.
 # their artifacts to that release.
 
 on:
