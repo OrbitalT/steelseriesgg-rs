@@ -1,7 +1,6 @@
 # Apex Pro HID Protocol Reference
 
-**VID:** `0x1038` (all SteelSeries devices)  
-**Last Updated:** 2026-05-27
+**VID:** `0x1038` (all SteelSeries devices)
 
 ---
 
