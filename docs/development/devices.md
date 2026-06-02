@@ -3,6 +3,7 @@
 All SteelSeries devices use VID `0x1038`.
 
 PIDs in this file are sourced from GG firmware folder names, which encode `(VID << 16) | PID`.
+The tables list the low 16-bit USB PID only.
 Verified against: GG 111.0.0 firmware directory + connected hardware (Apex Pro TKL 2023, 2026-05-26).
 
 ---
@@ -10,7 +11,7 @@ Verified against: GG 111.0.0 firmware directory + connected hardware (Apex Pro T
 ## Keyboards — ssgg Registry
 
 | Constant | PID | Name | Zones | Per-Key RGB | Actuation |
-|----------|-----|------|-------|-------------|-----------|
+|----------|-----|------|-------|-------------|----------|
 | `APEX_PRO` | 0x1610 | Apex Pro | 1 | No | No |
 | `APEX_PRO_TKL` | 0x1614 | Apex Pro TKL | 1 | No | No |
 | **`APEX_PRO_TKL_2023`** | **0x1628** | **Apex Pro TKL (2023)** | **9** | **0x40 ✅** | **0x2D ✅** |

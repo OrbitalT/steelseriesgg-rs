@@ -3,7 +3,7 @@
 Three SQLite databases used by GG. All are locked while GG runs — copy before reading.
 
 | Database | Path | Size | Purpose |
-|----------|------|------|---------|
+|----------|------|------|--------|
 | Engine | `GG\apps\engine\db\database.db` | ~44 MB | Device registry, profiles, actuation, OLED |
 | Prism | `GG\apps\engine\prism\db\database.db` | ~2.7 MB | RGB lighting configs and key layout |
 | Sonar | `GG\apps\sonar\db\database.db` | ~2.7 MB | Audio DSP, EQ, mic processing |
@@ -304,7 +304,7 @@ ssgg's `Effect` models one state. GG has three independent states with transitio
 **Number row** (y=212):
 
 | unique_id | x | hid | key | al |
-|-----------|---|-----|-----|----||
+|-----------|---|-----|-----|----|
 | 68117545673293824 | 140 | 53 | ` ~ | 600 |
 | 68117700292116480 | 176 | 30 | 1 ! | 600 |
 | 68117854910939136 | 212 | 31 | 2 @ | 600 |
@@ -326,7 +326,7 @@ ssgg's `Effect` models one state. GG has three independent states with transitio
 **Tab / QWERTY top row** (y=181):
 
 | unique_id | x | hid | key | al |
-|-----------|---|-----|-----|----||
+|-----------|---|-----|-----|----|
 | 68117584325967872 | 149 | 43 | Tab | 600 |
 | 68117777599496192 | 194 | 20 | Q | 600 |
 | 68117932218318848 | 230 | 26 | W | 600 |
@@ -348,7 +348,7 @@ ssgg's `Effect` models one state. GG has three independent states with transitio
 **Home row** (y=150):
 
 | unique_id | x | hid | key | al |
-|-----------|---|-----|-----|----||
+|-----------|---|-----|-----|----|
 | 68117614388707328 | 156 | 57 | Caps Lock | 600 |
 | 68117837727006720 | 208 | 4 | A | 600 |
 | 68117992345829376 | 244 | 22 | S | 600 |
@@ -366,7 +366,7 @@ ssgg's `Effect` models one state. GG has three independent states with transitio
 **ZXCV row** (y=120):
 
 | unique_id | x | hid | key | al |
-|-----------|---|-----|-----|----||
+|-----------|---|-----|-----|----|
 | 68117678811250688 | 171 | 225 | L Shift | 600 |
 | 68117962279092224 | 237 | 29 | Z | 600 |
 | 68118116897914880 | 273 | 27 | X | 600 |
@@ -384,7 +384,7 @@ ssgg's `Effect` models one state. GG has three independent states with transitio
 **Bottom row** (y=89):
 
 | unique_id | x | hid | key | al |
-|-----------|---|-----|-----|----||
+|-----------|---|-----|-----|----|
 | 68117575730003968 | 147 | 224 | L Ctrl | 600 |
 | 68117794773336064 | 198 | 227 | L GUI (Win) | 600 |
 | 68117988046864384 | 243 | 226 | L Alt | 600 |
@@ -443,7 +443,7 @@ CREATE TABLE key_value (
 **`vad` values** (Virtual Audio Device):
 
 | Value | Channel |
-|-------|--------|
+|-------|---------|
 | 1 | Game output (speakers/headphones) |
 | 2 | Microphone input |
 | 3 | Media output (music player) |
