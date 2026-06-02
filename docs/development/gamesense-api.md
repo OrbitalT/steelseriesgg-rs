@@ -1,8 +1,6 @@
 # GameSense API Reference
 
-Generated: 2026-05-26  
-Sources: ssgg source code + GG main SQLite schema + **live API validation against GG 111.0.0** (port 53714)  
-Status: VALIDATED — all 7 endpoints tested against running GG
+All 7 endpoints validated against GG 111.0.0 (port 53714), 2026-05-26.
 
 ---
 
