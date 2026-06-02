@@ -126,7 +126,7 @@ impl GameSenseServer {
 
         // Standard location for SteelSeries Engine
         #[cfg(target_os = "linux")]
-        let path = std::path::Path::new("/tmp/steelseries-engine/coreProps.json");
+        let path = std::path::PathBuf::from("/tmp/steelseries-engine/coreProps.json");
 
         #[cfg(target_os = "windows")]
         let path = {
@@ -138,7 +138,7 @@ impl GameSenseServer {
         };
 
         #[cfg(target_os = "macos")]
-        let path = std::path::Path::new("/Library/Application Support/SteelSeries Engine 3/coreProps.json");
+        let path = std::path::PathBuf::from("/Library/Application Support/SteelSeries Engine 3/coreProps.json");
 
         Self::write_secure_json(&path, &props)
     }
