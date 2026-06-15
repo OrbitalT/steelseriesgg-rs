@@ -6,7 +6,7 @@ Use [`AGENTS.md`](../AGENTS.md) as the canonical project handbook. Keep this fil
 
 - Make the smallest change that fully solves the request.
 - Prefer editing existing files over creating new ones.
-- Match local Rust patterns: `snake_case` functions/modules, `PascalCase` types, `SCREAMING_SNAKE_CASE` constants.
+- Match local Rust patterns: `snake_case` for functions and modules, `PascalCase` for types, `SCREAMING_SNAKE_CASE` for constants.
 - Use `crate::error::Error`/`thiserror` in library code and `anyhow` with `.context(...)` in binaries.
 - Use `HidReportBuilder` and existing HID abstractions instead of hand-built report buffers.
 - Preserve the pinned `hidapi = "=2.6.5"` dependency constraint unless the task explicitly requires changing it.

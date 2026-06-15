@@ -55,7 +55,7 @@ Block when: failing tests, security issues, no test coverage for new code, undoc
 <HighLevelDetails>
 
 1. Measure before optimizing (profile, don't guess)
-2. Know target latency/throughput/memory constraints
+2. Know target latency, throughput, and memory constraints
 3. Focus on hot paths, not edge cases
 4. Document trade-offs
 5. Verify improvements with measurements
@@ -66,11 +66,11 @@ Block when: failing tests, security issues, no test coverage for new code, undoc
 
 | Issue | Problem | Fix |
 |-------|---------|-----|
-| Algorithm complexity | O(n^2) where O(n) viable | Use sets/dicts for lookups |
+| Algorithm complexity | O(n^2) where O(n) viable | Use sets or dicts for lookups |
 | Unnecessary copies | References suffice | Use views, generators, borrows |
-| Repeated computation | Same value computed N times | Cache/memoize results |
+| Repeated computation | Same value computed N times | Cache or memoize results |
 | I/O in hot paths | DB call per item in loop | Batch queries |
-| String concat in loops | O(n^2) from immutability | Use join/StringBuilder |
+| String concat in loops | O(n^2) from immutability | Use join or StringBuilder |
 | Memory leaks | Unbounded caches | LRU with maxsize, weak refs |
 | Wrong data structure | List for membership test O(n) | Set for O(1) contains |
 
@@ -88,7 +88,7 @@ Block when: failing tests, security issues, no test coverage for new code, undoc
 ### Language-Specific Profiling
 
 - **Python**: `cProfile` + `pstats`, `functools.lru_cache`, generators, numpy for numerics
-- **JS/TS**: `console.time/timeEnd`, DevTools Performance, `requestAnimationFrame`, Web Workers
+- **JS/TS**: `console.time` and `console.timeEnd`, DevTools Performance, `requestAnimationFrame`, Web Workers
 - **Rust**: `cargo bench`, `cargo-flamegraph`, iterators, `#[inline]` (measure first)
 
 ---

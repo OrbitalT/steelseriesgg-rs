@@ -17,7 +17,7 @@ When performing a code review, respond in **English**
 When performing a code review, prioritize issues in the following order:
 
 ### 🔴 CRITICAL (Block merge)
-- **Security**: Vulnerabilities, exposed secrets, authentication/authorization issues
+- **Security**: Vulnerabilities, exposed secrets, authentication and authorization issues
 - **Correctness**: Logic errors, data corruption risks, race conditions
 - **Breaking Changes**: API contract changes without versioning
 - **Data Loss**: Risk of data loss or corruption
@@ -32,7 +32,7 @@ When performing a code review, prioritize issues in the following order:
 - **Readability**: Poor naming, complex logic that could be simplified
 - **Optimization**: Performance improvements without functional impact
 - **Best Practices**: Minor deviations from conventions
-- **Documentation**: Missing or incomplete comments/documentation
+- **Documentation**: Missing or incomplete comments and documentation
 
 ## General Review Principles
 
@@ -54,7 +54,7 @@ When performing a code review, check for:
 
 ### Clean Code
 - Descriptive and meaningful names for variables, functions, and classes
-- Single Responsibility Principle: each function/class does one thing well
+- Single Responsibility Principle: each function or class does one thing well
 - DRY (Don't Repeat Yourself): no code duplication
 - Functions should be small and focused (ideally < 20-30 lines)
 - Avoid deeply nested code (max 3-4 levels)
@@ -85,7 +85,7 @@ function calculateDiscount(orderTotal, itemPrice) {
 - Meaningful error messages
 - No silent failures or ignored exceptions
 - Fail fast: validate inputs early
-- Use appropriate error types/exceptions
+- Use appropriate error types and exceptions
 
 ### Examples
 ```python
@@ -140,7 +140,7 @@ When performing a code review, verify test quality:
 - **Test Names**: Descriptive names that explain what is being tested
 - **Test Structure**: Clear Arrange-Act-Assert or Given-When-Then pattern
 - **Independence**: Tests should not depend on each other or external state
-- **Assertions**: Use specific assertions, avoid generic assertTrue/assertFalse
+- **Assertions**: Use specific assertions, avoid generic `assertTrue` or `assertFalse`
 - **Edge Cases**: Test boundary conditions, null values, empty collections
 - **Mock Appropriately**: Mock external dependencies, not domain logic
 
@@ -171,7 +171,7 @@ test('should calculate 10% discount for orders under $100', () => {
 When performing a code review, check for performance issues:
 
 - **Database Queries**: Avoid N+1 queries, use proper indexing
-- **Algorithms**: Appropriate time/space complexity for the use case
+- **Algorithms**: Appropriate time and space complexity for the use case
 - **Caching**: Utilize caching for expensive or repeated operations
 - **Resource Management**: Proper cleanup of connections, files, streams
 - **Pagination**: Large result sets should be paginated
@@ -197,7 +197,7 @@ for user in users:
 
 When performing a code review, verify architectural principles:
 
-- **Separation of Concerns**: Clear boundaries between layers/modules
+- **Separation of Concerns**: Clear boundaries between layers and modules
 - **Dependency Direction**: High-level modules don't depend on low-level details
 - **Interface Segregation**: Prefer small, focused interfaces
 - **Loose Coupling**: Components should be independently testable
@@ -224,7 +224,7 @@ A GitHub suggestion block uses the special `suggestion` language tag inside a fe
 
 1. **Always use ` ```suggestion ` blocks** for any comment that proposes a code change, no matter how small (renames, formatting, logic changes, security fixes, etc.)
 2. **One suggestion block per comment** - if you need to change multiple locations, leave separate review comments on each location
-3. The suggestion block must contain the **complete replacement code** for the lines the comment targets - not a diff, not a before/after comparison, just the corrected code
+3. The suggestion block must contain the **complete replacement code** for the lines the comment targets - not a diff, not a before-and-after comparison, just the corrected code
 4. **Do not include unchanged surrounding code** unless it is part of the lines the comment is attached to
 5. If a comment is purely observational and does not propose a code change (e.g., asking a question, requesting clarification), a suggestion block is not needed
 6. **Multi-line suggestions**: When the fix spans multiple lines, attach the review comment to the full line range and put all corrected lines in a single suggestion block
@@ -289,7 +289,7 @@ if (!user || !user.isActive || !user.hasPermission('write')) {
 ```
 ```
 
-#### Multi-line rename/refactor
+#### Multi-line rename or refactor
 ```markdown
 **🟢 SUGGESTION - Readability: Use descriptive names and named constants**
 
@@ -316,7 +316,7 @@ When performing a code review, systematically verify:
 ### Code Quality
 - [ ] Code follows consistent style and conventions
 - [ ] Names are descriptive and follow naming conventions
-- [ ] Functions/methods are small and focused
+- [ ] Functions and methods are small and focused
 - [ ] No code duplication
 - [ ] Complex logic is broken into simpler parts
 - [ ] Error handling is appropriate
@@ -372,7 +372,7 @@ To customize this template for your project, add sections for:
 
 4. **Team conventions**
    - Example: "When performing a code review, verify commit messages follow conventional commits format"
-   - Example: "When performing a code review, check branch names follow pattern: type/ticket-description"
+   - Example: "When performing a code review, check branch names follow pattern: `type-ticket-description`"
 
 ## Additional Resources
 
