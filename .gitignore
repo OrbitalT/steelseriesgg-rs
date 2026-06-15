@@ -43,6 +43,7 @@ logs/security/
 .opencode/plans/
 .cachebro/
 .omc/
+.codegraph/
 
 # Mock udev library for CI builds
 mock_udev/lib/

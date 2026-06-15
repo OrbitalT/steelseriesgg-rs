@@ -28,14 +28,14 @@ systemctl --user enable --now ssgg.service
 - **RGB lighting**: static, breathing, spectrum, wave, reactive, gradient, custom per-zone, off
 - **GameSense server**: HTTP API compatible with SteelSeries GameSense
 - **Profiles**: save/load device configurations
-- **Daemon mode**: background service with animations + GameSense overlays
+- **Daemon mode**: background service with animations and GameSense overlays
 - **Audio mixer** (feature `audio`): domain model, PulseAudio/PipeWire wiring planned
 - **Sonar API** (feature `sonar`): control SteelSeries Sonar via HTTP (Sonar must be running)
 
-## Supported Devices **WIP**
+## Supported Devices
 
 ### Keyboards
-- Apex Pro / Apex Pro TKL / [Apex Pro TKL 2023](https://steelseries.com/gaming-keyboards/apex-pro-2023)
+- Apex Pro / Apex Pro TKL / Apex Pro TKL 2023 (PID `0x1630` - pending hardware confirmation)
 - Apex 3 / Apex 3 TKL
 - Apex 5
 - Apex 7 / Apex 7 TKL
@@ -45,6 +45,7 @@ systemctl --user enable --now ssgg.service
 - Arctis 5 / Arctis 7 / Arctis 7 (2019 Edition)
 - Arctis 9 / Arctis Pro / Arctis Pro Wireless
 - Arctis Nova Pro / Arctis Nova Pro Wireless
+- Arctis Nova Pro Omni (PID `0x2290` - pending hardware confirmation)
 - Arctis Nova 5 / Arctis Nova 3 / Arctis Nova 1
 
 ## Installation
@@ -91,9 +92,11 @@ sudo apt install libpulse-dev
 
 Binary: `target/release/ssgg`.
 
+The release profile uses link-time optimization, symbol stripping, and single codegen unit for an optimized binary.
+
 ### Optional Build Optimizations
 
-The project includes optional build optimizations in `.cargo/config.toml`. These are **not required** but can improve build times:
+The project includes optional build optimizations in `.cargo/config.toml`. These are not required but can improve build times:
 
 **sccache** (compilation cache):
 ```bash
@@ -114,8 +117,6 @@ sudo pacman -S lld
 
 # Then uncomment the lld line in .cargo/config.toml
 ```
-
-These optimizations are experimental and optional. The project builds successfully without them.
 
 ### Device permissions (udev)
 
@@ -261,12 +262,33 @@ ssgg daemon
 
 The daemon will run in the foreground and can be stopped gracefully with Ctrl+C or `systemctl --user stop ssgg.service` when running as a systemd service.
 
-**Run as systemd user service**
-
+Run as systemd user service:
 ```bash
 systemctl --user daemon-reload
 systemctl --user enable --now ssgg.service
 journalctl --user -u ssgg.service -f
+```
+
+### Device diagnostics and testing
+
+View HID device logs:
+```bash
+ssgg hid-logs
+```
+
+Run device self-test:
+```bash
+ssgg test-device
+```
+
+Verify device performance metrics:
+```bash
+ssgg verify-performance
+```
+
+Run HID report fuzzing (development tool):
+```bash
+ssgg fuzz
 ```
 
 ## Configuration
@@ -289,23 +311,11 @@ default_profile = "default"
 debug = false
 ```
 
-## Dependencies (core crates)
-
-| Crate | Purpose |
-|-------|---------|
-| hidapi | HID device communication |
-| tokio | Async runtime |
-| axum | GameSense HTTP server |
-| reqwest | Sonar HTTP client |
-| serde / serde_json | Serialization |
-| clap | CLI argument parsing |
-| tracing | Logging |
-| libpulse-binding | Audio integration (feature `audio`) |
-
 ## Feature Flags
 
-- `audio` - Enable audio mixer with PulseAudio support (optional)
-- `sonar` - Enable SteelSeries Sonar API integration (optional, requires `audio`)
+- `audio` - Enable audio mixer with PulseAudio/PipeWire support
+- `sonar` - Enable SteelSeries Sonar API integration
+- `experimental-apex-2023` - Enable experimental Apex Pro TKL 2023 direct per-key RGB (unverified on hardware)
 
 By default, no optional features are enabled. The Arch package ships with default features only.
 
@@ -319,6 +329,32 @@ Build with all features:
 cargo build --release --all-features
 ```
 
+## Helper binaries
+
+The project includes developer and testing utilities:
+
+- `discover_actuation` - Probe actuation firmware commands (development tool)
+- `sonar_control` - SteelSeries Sonar HTTP API exerciser (requires `sonar` feature)
+
+## Dependencies
+
+| Crate | Purpose |
+|-------|---------|
+| hidapi | HID device communication (pinned =2.6.6) |
+| tokio | Async runtime |
+| axum | GameSense HTTP server |
+| reqwest | Sonar HTTP client (optional, `sonar` feature) |
+| serde / serde_json | Serialization |
+| clap | CLI argument parsing |
+| tracing / tracing-subscriber | Logging |
+| thiserror / anyhow | Error handling |
+| libpulse-binding | Audio integration (`audio` feature) |
+| sysinfo | System diagnostics |
+| tabled | Terminal table output |
+| colored | Colored terminal output |
+| indicatif | Progress indicators |
+| chrono | Timestamps for diagnostics |
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
@@ -329,5 +365,5 @@ Issues and PRs are welcome. Please run `cargo fmt && cargo clippy --all-targets 
 
 ## Acknowledgments
 
-- [hidapi](https://crates.io/crates/hidapi) — HID access
-- [apex-tux](https://github.com/not-jan/apex-tux) and apex7tkl_linux — keyboard inspiration
+- [hidapi](https://crates.io/crates/hidapi) - HID access
+- [apex-tux](https://github.com/not-jan/apex-tux) and apex7tkl_linux - keyboard inspiration
