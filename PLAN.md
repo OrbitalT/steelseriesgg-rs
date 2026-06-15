@@ -104,8 +104,8 @@ command is **`0x21`** with the per-zone RGB layout above.
 
 ### Tasks
 
-1. Add a typed command code for the 8-zone set-color (`0x21`) to `hid_reports.rs` if absent;
-   build the report with `HidReportBuilder` (no raw arrays).
+1. Reference the existing typed command code for the 8-zone set-color (CommandCode::RgbControl, 0x21) in hid_reports.rs;
+   build the report with HidReportBuilder (no raw arrays).
 2. Override `set_color` and `set_zone_colors` in `Apex3Tkl` instead of delegating to the Apex Pro
    path: map the requested color(s) onto bytes 2–25 with bitmask `0xFF`.
 3. Map `set_color(c)` → all 8 zones = `c`; map `set_zone_colors` onto the zone order in
