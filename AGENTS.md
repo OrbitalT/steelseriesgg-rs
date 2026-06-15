@@ -1,6 +1,15 @@
 # steelseriesgg-rs — Agent Handbook
 
-Open-source SteelSeries GG replacement for Linux. Controls SteelSeries keyboards and headsets: RGB lighting, GameSense-compatible HTTP server, profiles, and optional audio or Sonar integration.
+## Project context
+
+Open-source SteelSeries GG replacement for Linux. Controls SteelSeries keyboards and headsets via USB HID: RGB lighting effects, a GameSense-compatible HTTP server (port 27301), device profiles, and optional PulseAudio/PipeWire mixer and Sonar integration.
+
+- **Language**: Rust 2021 edition, MSRV 1.94.1
+- **Primary binary**: `ssgg` (`src/main.rs`, clap CLI)
+- **Library crate**: `steelseries_gg` (`src/lib.rs`)
+- **Platform**: Linux-first; Windows build supported but not primary
+- **Config**: `$XDG_CONFIG_HOME/ssgg/config.toml`
+- **Repo**: `https://github.com/Ven0m0/steelseriesgg-rs`
 
 ---
 
@@ -18,7 +27,7 @@ src/fs_utils.rs                          Filesystem helpers (path resolution, at
 src/pollrate.rs                          HID polling rate query and control
 src/performance.rs                       PerformanceManager
 src/validation.rs                        RgbValidator, ValidationReport
-src/config/mod.rs                        ~/.config/ssgg/config.toml parsing
+src/config/mod.rs                        $XDG_CONFIG_HOME/ssgg/config.toml parsing
 src/profiles/mod.rs                      Save and load device state as TOML
 src/rgb/mod.rs                           Color, Effect, RgbController, PerKeyEffect
 src/gamesense/mod.rs                     GameSense handler registration
@@ -83,7 +92,7 @@ When prose docs and code disagree, always trust these files:
 
 **Toolchain**: `rust-toolchain.toml` pins `channel = "stable"`. CI jobs explicitly pin **1.94.1** (via the `dtolnay` rust-toolchain action). MSRV declared in `Cargo.toml`: **1.94.1**.
 
-> Do not infer a specific toolchain version from memory — read `rust-toolchain.toml` and `.github/workflows/ci.yml`.
+> Verify the toolchain by reading `rust-toolchain.toml` and `.github/workflows/ci.yml` before quoting any version — memory is unreliable here.
 
 ### Local commands
 
@@ -127,10 +136,10 @@ The `audio` feature requires `libpulse-dev` on Debian/Ubuntu (`sudo apt-get inst
 ## Hard constraints
 
 1. **HID reports**: always use `HidReportBuilder` and typed helpers in `src/devices/hid_reports.rs`. Never build raw byte arrays by hand.
-2. **hidapi pin**: `hidapi = "=2.6.6"` — do not change unless the task explicitly requires it with justification.
-3. **GameSense CORS**: localhost-only origin policy. Do not loosen it.
-4. **No `.unwrap()` or `.expect()` in production paths** — return `Err(...)` or propagate with `?`.
-5. **Error types**: `crate::error::Error` with `thiserror` at library boundaries; `anyhow` with `.context(...)` in `src/main.rs` and binaries.
+2. **hidapi pin**: keep `hidapi = "=2.6.6"` exactly; changing it requires explicit task justification.
+3. **GameSense CORS**: enforce localhost-only origin; the policy may only be tightened, never relaxed.
+4. **Propagate errors**: use `?` or return an explicit `Err` value — no `unwrap` or `expect` in production paths.
+5. **Error types**: `crate::error::Error` with `thiserror` at library boundaries; `anyhow` with `context()` in `src/main.rs` and binaries.
 6. **Protocol accuracy**: `experimental-apex-2023` and `PerKeyRgb (0x23)` are reverse-engineered and unverified. Label new protocol work clearly; never state it as confirmed unless tested on hardware.
 7. **Minimal scope**: fix what the task asks, nothing more. No opportunistic refactors.
 8. **No mutable global state**, no panics in non-test code (unless explicitly fatal and documented), no ignored `Result`s.
@@ -157,7 +166,7 @@ rg 'TypeName\|fn_name' src/     # locate the symbol first
 # then read only the relevant lines
 ```
 
-Avoid reading entire large files (`src/main.rs`, `src/devices/hid_reports.rs`) unless you need the full picture. Use `rg --files src/` or `ls src/` for structure discovery.
+Read only the lines you need. Use `rg --files src/` or `ls src/` for structure discovery; use targeted `rg` before opening any large file (`src/main.rs`, `src/devices/hid_reports.rs`).
 
 ---
 
@@ -181,10 +190,10 @@ Avoid reading entire large files (`src/main.rs`, `src/devices/hid_reports.rs`) u
 
 ---
 
-## What NOT to do
+## Key reminders
 
-- Do not build raw HID byte arrays — use `HidReportBuilder`.
-- Do not loosen the GameSense CORS policy.
-- Do not state toolchain versions, feature relationships, or CI commands from memory — read the source-of-truth files.
-- Do not add features, error handling, or abstractions beyond what the task requires.
-- Do not create planning or analysis documents unless explicitly requested.
+- **HID reports**: always use `HidReportBuilder` — never build raw byte arrays by hand.
+- **GameSense CORS**: keep the localhost-only origin policy; tightening is fine, loosening is not.
+- **Toolchain and CI facts**: always read `rust-toolchain.toml` and `.github/workflows/ci.yml` — treat memory as unreliable.
+- **Scope discipline**: implement exactly what the task asks; leave surrounding code untouched.
+- **Documents**: only create planning or analysis documents when explicitly requested.
