@@ -1,16 +1,15 @@
 # TODOs
 
-## Research
-
-the [OpenRGB project](https://openrgb.org/) has [support for APEX 3 TKL](https://openrgb.org/devices.html?search=apex+3+tkl) and they do have an [overview of the protocol](https://gitlab.com/CalcProgrammer1/OpenRGB/-/blob/master/Controllers/SteelSeriesController/SteelSeriesApex8ZoneController/SteelSeriesApex8ZoneController.h?ref_type=heads#L45). Research that and implement it.
+> Actionable work is tracked, prioritized, and sequenced in [`PLAN.md`](./PLAN.md).
+> This file is the lightweight backlog + research reference.
 
 ## Active backlog
 
-1. Reproduce issue #6 on an Arch-like environment and fix it only if the failure still exists.
-   - Validate the `cargo build --release --locked` path used by the package and release workflow.
-   - Keep any fix limited to packaging, install metadata, manifests, or CI unless reproduction proves a code change is required.
-2. Continue Apex Pro TKL 2023 protocol and RGB work.
-   - Verify the real per-key RGB protocol on hardware and replace the placeholder `0x23` path when confirmed.
+1. **Apex 3 TKL RGB (issue #173)** — commands report success but lighting never changes.
+   Concrete lead: OpenRGB's 8-zone protocol (`0x21` = set zone colors, `0x23` = brightness);
+   the current code uses `0x23` for color. See PLAN.md Phase 1.
+2. **Apex Pro TKL 2023 protocol + RGB work** — see PLAN.md Phase 2.
+   - Verify the real per-key RGB protocol on hardware and replace the placeholder `0x23` path.
    - Discover an actuation read-back command if the firmware exposes one.
    - Validate unsupported-key handling plus ANSI/ISO layout differences on hardware.
 
@@ -23,16 +22,18 @@ the [OpenRGB project](https://openrgb.org/) has [support for APEX 3 TKL](https:/
 
 ### Directly relevant
 
+- Apex keyboard protocol / RGB research
+  - OpenRGB SteelSeries 8-zone controller (Apex 3 TKL) —
+    https://gitlab.com/CalcProgrammer1/OpenRGB/-/blob/master/Controllers/SteelSeriesController/SteelSeriesApex8ZoneController/SteelSeriesApex8ZoneController.h
+  - https://github.com/AstroSnail/apexctl
+  - https://github.com/FrankGrimm/apex7tkl_linux
+  - https://github.com/not-jan/apex-tux
 - Sonar / audio research
   - https://github.com/PrzemekkkYT/GGSonarRev
   - https://github.com/wex/sonar-rev
   - https://github.com/Mark7888/steelseries-sonar-py
   - https://codeberg.org/Birbwell/linuxmix
   - https://github.com/Dymstro/nova-chatmix-linux
-- Apex keyboard protocol / RGB research
-  - https://github.com/AstroSnail/apexctl
-  - https://github.com/FrankGrimm/apex7tkl_linux
-  - https://github.com/not-jan/apex-tux
 
 ### Research-only
 
