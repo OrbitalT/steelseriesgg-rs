@@ -107,6 +107,10 @@ Captured via `IOCTL_HID_SET_FEATURE` (code `0x000B0191`) from `SteelSeriesEngine
 |------|------|-------|
 | `0x23` | Per-Key RGB | Placeholder for non-2023 models. Packet structure unknown. |
 
+> ⚠️ UNVERIFIED: `0x23` is a placeholder command code. The real per-key RGB
+> command for non-2023 SteelSeries keyboards has not been discovered. Do not
+> treat the `PerKeyRgbCommand` packet layout as confirmed hardware behavior.
+
 ---
 
 ### Unknown — Actuation Read-Back and Rapid Trigger
@@ -136,6 +140,34 @@ Rapid Trigger command byte: unknown. Hypothesized in range `0x2E`–`0x3F`. Requ
 | 8 | ArrowKeys | Arrow key cluster |
 
 Prism DB (`zone_cache`) confirms **84 individually addressable keys** on the US layout. The migration file lists 87 — the 3 extra are international-only keys (HID 50, 100, 133, 135–139) absent on US keyboards.
+
+---
+
+## Zone Mapping — Apex 3 TKL (`0x1622`, Issue #173)
+
+`ssgg rgb solid` reports success on the Apex 3 TKL but nothing changes (multiple
+users, Issue #173). The Apex 3 TKL is a zone keyboard, so the missing per-key
+map is expected; the suspect is the zone-color command path.
+
+**External lead — OpenRGB `SteelSeriesApex8ZoneController`** (linked in #173):
+a 65-byte report (report ID + 64 payload) with this dialect:
+
+| Command | Byte 0 | Layout |
+|---------|--------|--------|
+| Set zone colors | `0x21` | byte 1 = LED bitmask (`0xFF` = all 8), bytes 2–25 = `R G B` × 8 zones, rest zero-padded |
+| Rainbow wave | `0x22` | byte 1 = `0xFF` |
+| Brightness | `0x23` | byte 1 = `0x00`–`0x10` (multiplier) |
+
+> ⚠️ UNVERIFIED for this SKU. The OpenRGB layout is a strong lead, not an
+> Apex 3 TKL-confirmed protocol. Open questions, pending hardware:
+> - **Zone count:** this codebase registers **9** zones for `0x1622`
+>   (`zone_count_for_product_id` in `src/devices/mod.rs`, `zone_mapping.rs`),
+>   but OpenRGB models the controller as **8**. The current color path already
+>   emits `0x21` with the `0xFF` selector via `RgbZoneCommand`, so a zone-count
+>   mismatch (9 written where firmware expects 8) is a plausible root cause —
+>   confirm the true count before changing the mapping.
+> - **Brightness coupling:** unknown whether color shows only after a non-zero
+>   `0x23` brightness write, or whether `0x21` is self-sufficient.
 
 ---
 
