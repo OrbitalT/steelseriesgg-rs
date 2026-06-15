@@ -1,5 +1,7 @@
 # GitHub Copilot Instructions — steelseriesgg-rs
 
+**Instruction precedence** (highest to lowest): `AGENTS.md` (canonical handbook) → this file (Copilot-specific operational rules) → `.github/instructions/*.instructions.md` (topic-specific overlays). When rules conflict, `AGENTS.md` wins.
+
 Use [`AGENTS.md`](../AGENTS.md) as the canonical project handbook. Keep this file short, stable, and operational.
 
 ## Do
