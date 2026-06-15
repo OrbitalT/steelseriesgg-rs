@@ -14,7 +14,7 @@ tmp/
 *.pdb
 .vscode/settings.json
 .summary_files/
-.claude/
+.claude/settings.local.json
 .claude-dev-helper/
 .pair-programming-session.md
 .planning/

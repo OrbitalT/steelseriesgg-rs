@@ -2,7 +2,46 @@
   "permissions": {
     "allow": [
       "Bash(git fetch origin *)",
-      "Bash(git reset --hard origin/*)"
+      "Bash(git reset --hard origin/*)",
+      "mcp__plugin_context-mode_context-mode__ctx_batch_execute"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Edit(*hid_reports.rs)",
+            "command": "echo 'REMINDER: Only use HidReportBuilder typed helpers. Never construct raw byte arrays by hand. See src/devices/hid_reports.rs.'"
+          },
+          {
+            "type": "command",
+            "if": "Write(*hid_reports.rs)",
+            "command": "echo 'REMINDER: Only use HidReportBuilder typed helpers. Never construct raw byte arrays by hand. See src/devices/hid_reports.rs.'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Edit(*.rs)",
+            "command": "cargo fmt --all -- --check 2>&1 | head -20 && exit 0 || exit 2",
+            "async": true
+          },
+          {
+            "type": "command",
+            "if": "Write(*.rs)",
+            "command": "cargo fmt --all -- --check 2>&1 | head -20 && exit 0 || exit 2",
+            "async": true
+          }
+        ]
+      }
     ]
   }
 }

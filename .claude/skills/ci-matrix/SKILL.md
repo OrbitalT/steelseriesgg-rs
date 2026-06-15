@@ -1,0 +1,53 @@
+---
+name: ci-matrix
+description: Run the full local CI matrix for steelseriesgg-rs, matching .github/workflows/ci.yml exactly. Use this whenever the user asks to run CI, check all feature variants, run the full test suite, verify before pushing, or run clippy/fmt/tests across features. Invoke proactively before any push or PR review.
+---
+
+Run the full CI matrix locally. Stop at the first failure and report it clearly.
+
+## Steps
+
+Run each command in order. If a command fails, report the error output and stop — do not continue to the next step.
+
+**1. Format check**
+```
+cargo fmt --all -- --check
+```
+
+**2. Clippy — default features**
+```
+cargo clippy --all-targets --locked -- -D warnings
+```
+
+**3. Clippy — sonar feature**
+```
+cargo clippy --all-targets --locked --features sonar -- -D warnings
+```
+
+**4. Clippy — audio feature**
+```
+cargo clippy --all-targets --locked --features audio -- -D warnings
+```
+Skip and note as skipped if `libpulse-dev` is not installed (the error will mention `libpulse-binding`).
+
+**5. Tests — default features**
+```
+cargo test --locked
+```
+
+**6. Tests — sonar feature**
+```
+cargo test --locked --features sonar
+```
+
+## Report format
+
+After all steps pass, report:
+- Which steps ran and passed
+- Any steps skipped and why
+- Total time if notable
+
+If a step fails, report:
+- Which step failed
+- The relevant error lines (trim noise, keep the actionable part)
+- What to fix
