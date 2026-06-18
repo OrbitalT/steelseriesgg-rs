@@ -75,7 +75,7 @@ thiserror = "2.0.18"
 # Async runtime - only include needed features to reduce binary size
 tokio = { version = "1.52.3", default-features = false, features = ["rt-multi-thread", "macros", "signal", "fs"] }
 toml = "1.1.2"
-tower-http = { version = "0.6.11", default-features = false, features = ["cors"] }
+tower-http = { version = "0.7.0", default-features = false, features = ["cors"] }
 
 # Logging
 tracing = "0.1.44"
