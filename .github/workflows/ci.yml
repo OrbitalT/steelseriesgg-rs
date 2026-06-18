@@ -19,10 +19,10 @@ jobs:
     name: Format Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.94.1
+          toolchain: 1.96.0
           components: rustfmt, llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
       - name: Check formatting
@@ -38,10 +38,10 @@ jobs:
           - "--features sonar"
           - "--features audio"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.94.1
+          toolchain: 1.96.0
           components: clippy
 
       - name: Install audio dependencies (for audio feature)
@@ -67,10 +67,10 @@ jobs:
           - ""
           - "--features sonar"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.94.1
+          toolchain: 1.96.0
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -90,10 +90,10 @@ jobs:
           - "--features sonar"
           - "--features audio"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.94.1
+          toolchain: 1.96.0
 
       - name: Install audio dependencies (for audio feature)
         if: contains(matrix.features, 'audio')
