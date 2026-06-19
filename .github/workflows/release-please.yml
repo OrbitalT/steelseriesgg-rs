@@ -13,6 +13,12 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to upload binaries to (e.g., v0.1.1). Leave empty to run release-please only.'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -24,6 +30,7 @@ env:
 jobs:
   release-please:
     name: Release please
+    if: ${{ github.event_name == 'push' || github.event.inputs.tag == '' }}
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.rp.outputs.release_created }}
@@ -38,7 +45,7 @@ jobs:
   build-linux:
     name: Build Linux / Arch x86_64
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ always() && (needs.release-please.outputs.release_created == 'true' || github.event.inputs.tag != '') }}
     runs-on: ubuntu-latest
     container:
       image: archlinux:base-devel
@@ -50,7 +57,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ github.event.inputs.tag || needs.release-please.outputs.tag_name }}
       - name: Create unprivileged build user
         run: |
           useradd -m builder
@@ -79,7 +86,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ needs.release-please.outputs.tag_name }}" \
+          gh release upload "${{ github.event.inputs.tag || needs.release-please.outputs.tag_name }}" \
             ssgg-linux-x86_64.tar.gz \
             sha256sums-linux.txt \
             *.pkg.tar.zst \
@@ -89,12 +96,12 @@ jobs:
   build-windows:
     name: Build Windows x86_64
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ always() && (needs.release-please.outputs.release_created == 'true' || github.event.inputs.tag != '') }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ github.event.inputs.tag || needs.release-please.outputs.tag_name }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.1
@@ -114,4 +121,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          gh release upload "${{ needs.release-please.outputs.tag_name }}" ssgg-windows-x86_64.exe sha256sums-windows.txt --clobber
+          gh release upload "${{ github.event.inputs.tag || needs.release-please.outputs.tag_name }}" ssgg-windows-x86_64.exe sha256sums-windows.txt --clobber
