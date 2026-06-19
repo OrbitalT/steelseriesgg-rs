@@ -415,9 +415,11 @@ impl DeviceManager {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        if let Err(e) = Self::poll_devices(&mut api, &device_registry, &pending_events,
+                        let (returned_api, res) = Self::poll_devices(api, &device_registry, &pending_events,
                                                          &callback, &config, &mut current_devices,
-                                                         &mut last_event_time).await {
+                                                         &mut last_event_time).await;
+                        api = returned_api;
+                        if let Err(e) = res {
                             warn!("Error during device polling: {}", e);
                         }
                     }
@@ -434,56 +436,77 @@ impl DeviceManager {
 
     /// Poll for device changes (internal method for hot-plug monitoring)
     async fn poll_devices(
-        api: &mut HidApi,
+        mut api: HidApi,
         device_registry: &Arc<RwLock<HashMap<String, DeviceRegistryEntry>>>,
         pending_events: &Arc<RwLock<HashMap<DeviceFingerprint, Instant>>>,
         callback: &Option<Arc<HotPlugCallback>>,
         config: &HotPlugConfig,
         current_devices: &mut HashMap<DeviceFingerprint, DeviceInfo>,
         last_event_time: &mut Instant,
-    ) -> Result<()> {
+    ) -> (HidApi, Result<()>) {
         // Rate limiting
         let now = Instant::now();
         let time_since_last = now.duration_since(*last_event_time);
         let min_interval = Duration::from_millis(1000 / config.max_event_rate as u64);
 
         if time_since_last < min_interval {
-            return Ok(());
+            return (api, Ok(()));
         }
 
-        // Refresh device list
-        if let Err(e) = api.refresh_devices() {
-            warn!("Failed to refresh HID device list: {}", e);
-            return Ok(());
-        }
-
-        let mut new_devices: HashMap<DeviceFingerprint, DeviceInfo> = HashMap::new();
-
-        // Enumerate current devices
-        for device in api.device_list() {
-            if device.vendor_id() != STEELSERIES_VENDOR_ID {
-                continue;
+        let (returned_api, res) = tokio::task::spawn_blocking(move || {
+            // Refresh device list
+            if let Err(e) = api.refresh_devices() {
+                warn!("Failed to refresh HID device list: {}", e);
+                return (api, Ok(HashMap::new()));
             }
 
-            let product_id = device.product_id();
-            let device_type = device_type_from_product_id(product_id);
-            let name = std::borrow::Cow::Borrowed(device_name_from_product_id(product_id));
-            let path = device.path().to_string_lossy().into_owned();
+            let mut new_devices: HashMap<DeviceFingerprint, DeviceInfo> = HashMap::new();
 
-            let info = DeviceInfo {
-                name,
-                device_type,
-                vendor_id: device.vendor_id(),
-                product_id,
-                interface_number: device.interface_number(),
-                serial_number: device.serial_number().map(|s: &str| s.to_string()),
-                manufacturer: device.manufacturer_string().map(|s: &str| s.to_string()),
-                path,
-            };
+            // Enumerate current devices
+            for device in api.device_list() {
+                if device.vendor_id() != crate::STEELSERIES_VENDOR_ID {
+                    continue;
+                }
 
-            let fingerprint = DeviceFingerprint::from_device_info(&info);
-            new_devices.insert(fingerprint, info);
-        }
+                let product_id = device.product_id();
+                let device_type = crate::devices::device_type_from_product_id(product_id);
+                let name = std::borrow::Cow::Owned(crate::devices::device_name_from_product_id(product_id).to_string());
+                let path = device.path().to_string_lossy().into_owned();
+
+                let info = crate::devices::DeviceInfo {
+                    name,
+                    device_type,
+                    vendor_id: device.vendor_id(),
+                    product_id,
+                    interface_number: device.interface_number(),
+                    serial_number: device.serial_number().map(|s: &str| s.to_string()),
+                    manufacturer: device.manufacturer_string().map(|s: &str| s.to_string()),
+                    path,
+                };
+
+                let fingerprint = DeviceFingerprint::from_device_info(&info);
+                new_devices.insert(fingerprint, info);
+            }
+
+            (api, Ok(new_devices))
+        })
+        .await
+        .unwrap_or_else(|e| {
+            warn!("Task panicked: {}", e);
+            // Try to recover by creating a new HidApi, this might fail but it's better than nothing
+            let fallback_api = hidapi::HidApi::new().expect("Failed to recreate HidApi after panic");
+            (
+                fallback_api,
+                Err(crate::Error::DeviceCommunication("Blocking task panicked".into())),
+            )
+        });
+
+        let new_devices = match res {
+            Ok(d) => d,
+            Err(e) => return (returned_api, Err(e)),
+        };
+
+        api = returned_api;
 
         // Process device changes
         let mut events_to_fire = Vec::new();
@@ -560,7 +583,7 @@ impl DeviceManager {
         // Clean up expired pending events
         Self::cleanup_pending_events(pending_events, config).await;
 
-        Ok(())
+        (api, Ok(()))
     }
 
     /// Check if an event should be debounced
