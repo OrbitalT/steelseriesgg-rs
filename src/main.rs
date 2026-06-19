@@ -3061,7 +3061,7 @@ async fn run_animation_loop(daemon_state_anim: Arc<RwLock<DaemonState>>) {
             let state = daemon_state_anim.read().await;
             let mut max_complexity = steelseries_gg::performance::EffectComplexity::Simple;
 
-            for (_, (_, controller, _)) in state.keyboards.iter() {
+            for (_, controller, _) in state.keyboards.values() {
                 let effect = controller.effect();
                 let effect_complexity = steelseries_gg::performance::calculate_effect_complexity(effect);
                 if effect_complexity as u8 > max_complexity as u8 {

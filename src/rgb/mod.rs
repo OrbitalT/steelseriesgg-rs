@@ -443,7 +443,7 @@ impl EffectEngine {
         let elapsed_secs = elapsed.as_secs_f32();
 
         // Reuse cached vector to avoid allocations - use truncate instead of clear + resize
-        self.cached_colors.truncate(0);
+        self.cached_colors.clear();
 
         match &self.effect {
             Effect::Static { color } => {
