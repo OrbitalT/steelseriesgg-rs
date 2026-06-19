@@ -1,13 +1,10 @@
 name: Release
 
-# Builds the Linux release binaries and uploads them as assets on the GitHub
-# Release that release-please creates for a v* tag. Versioning and CHANGELOG.md
-# are handled by release-please (.github/workflows/release-please.yml); this
-# workflow only produces and uploads artifacts.
-#
-# build-windows.yml and build-arch.yml are separate, manually triggered
-# (workflow_dispatch) builds that publish to the workflow run via
-# actions/upload-artifact; they do not attach assets to the GitHub Release.
+# Builds release binaries for Linux, Windows, and Arch Linux and uploads them
+# as assets on the GitHub Release that release-please creates for a v* tag.
+# Versioning and CHANGELOG.md are managed by release-please
+# (.github/workflows/release-please.yml); this workflow only produces and
+# uploads artifacts.
 
 on:
   push:
@@ -22,30 +19,122 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+  # ---------------------------------------------------------------------------
+  # Linux x86_64 (GNU)
+  # ---------------------------------------------------------------------------
+  build-linux:
+    name: Build Linux x86_64
+    runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v7
+
       - uses: dtolnay/rust-toolchain@stable
         with:
-          #toolchain: 1.96.0
-          targets: ${{ matrix.target }}
+          toolchain: 1.94.1
+          targets: x86_64-unknown-linux-gnu
+
+      - uses: Swatinem/rust-cache@v2
 
       - name: Build release binary
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        run: cargo build --release --locked --target x86_64-unknown-linux-gnu
 
       - name: Package binary
-        run: tar -C target/${{ matrix.target }}/release -czf ssgg-${{ matrix.target }}.tar.gz ssgg
+        run: tar -C target/x86_64-unknown-linux-gnu/release -czf ssgg-linux-x86_64.tar.gz ssgg
+
+      - name: Compute SHA-256
+        run: sha256sum ssgg-linux-x86_64.tar.gz > sha256sums-linux.txt
 
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
-          files: ssgg-${{ matrix.target }}.tar.gz
+          files: |
+            ssgg-linux-x86_64.tar.gz
+            sha256sums-linux.txt
+
+  # ---------------------------------------------------------------------------
+  # Windows x86_64 (MSVC)
+  # ---------------------------------------------------------------------------
+  build-windows:
+    name: Build Windows x86_64
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.1
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Compute SHA-256 and rename
+        shell: pwsh
+        run: |
+          Copy-Item target\release\ssgg.exe ssgg-windows-x86_64.exe
+          $hash = (Get-FileHash ssgg-windows-x86_64.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  ssgg-windows-x86_64.exe" | Out-File -Encoding ascii sha256sums-windows.txt
+          Get-Content sha256sums-windows.txt
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            ssgg-windows-x86_64.exe
+            sha256sums-windows.txt
+
+  # ---------------------------------------------------------------------------
+  # Arch Linux .pkg.tar.zst
+  # ---------------------------------------------------------------------------
+  build-arch:
+    name: Build Arch Linux Package
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --needed --noconfirm git rust systemd
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Create unprivileged build user
+        run: |
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builder:builder .
+
+      - name: Build Arch package
+        run: |
+          PKGVER=$(sed -n 's/^pkgver=\([^ ]*\).*/\1/p' PKGBUILD | head -n1)
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git archive \
+            --format=tar \
+            --prefix="steelseriesgg-rs-${PKGVER}/" \
+            --output="ssgg-${PKGVER}.tar" \
+            HEAD
+          gzip -n "ssgg-${PKGVER}.tar"
+          su - builder -c "cd \"$GITHUB_WORKSPACE\" && SRCDEST=\"$GITHUB_WORKSPACE\" makepkg -sCf --noconfirm"
+
+      - name: Compute checksums
+        run: |
+          sha256sum *.pkg.tar.zst > sha256sums-arch.txt
+          cat sha256sums-arch.txt
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            *.pkg.tar.zst
+            sha256sums-arch.txt
