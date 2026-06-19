@@ -1,10 +1,13 @@
-name: Release Please
+name: Release
 
-# Maintains CHANGELOG.md (Keep a Changelog format) and the crate version from
-# Conventional Commits. On every push to main it opens or updates a release
-# pull request; merging that PR tags v{version} and publishes a GitHub Release
-# whose notes are the new changelog section. The release event then triggers
-# release.yml to build and upload binaries.
+# Maintains CHANGELOG.md and the crate version from Conventional Commits.
+# On every push to main it opens or updates a release pull request.  When
+# the release PR is merged the googleapis/release-please-action creates a
+# tag and GitHub Release; the build jobs below are gated on the action's
+# `release_created` output and attach the built binaries to that release.
+#
+# Everything lives in one workflow so no cross-workflow triggering (which
+# would require a PAT — GITHUB_TOKEN events cannot start other workflows).
 
 on:
   push:
@@ -15,12 +18,100 @@ permissions:
   contents: write
   pull-requests: write
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   release-please:
     name: Release please
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@v5
+        id: rp
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  build-linux:
+    name: Build Linux / Arch x86_64
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --needed --noconfirm git rust systemd
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.release-please.outputs.tag_name }}
+      - name: Create unprivileged build user
+        run: |
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builder:builder .
+      - name: Build via PKGBUILD
+        run: |
+          PKGVER=$(sed -n 's/^pkgver=\([^ ]*\).*/\1/p' PKGBUILD | head -n1)
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git archive \
+            --format=tar \
+            --prefix="steelseriesgg-rs-${PKGVER}/" \
+            --output="ssgg-${PKGVER}.tar" \
+            HEAD
+          gzip -n "ssgg-${PKGVER}.tar"
+          su - builder -c "cd \"$GITHUB_WORKSPACE\" && SRCDEST=\"$GITHUB_WORKSPACE\" makepkg -sCf --noconfirm"
+      - name: Package generic Linux binary
+        run: tar -C src/target/release -czf ssgg-linux-x86_64.tar.gz ssgg
+      - name: Compute SHA-256
+        run: |
+          sha256sum ssgg-linux-x86_64.tar.gz > sha256sums-linux.txt
+          sha256sum *.pkg.tar.zst > sha256sums-arch.txt
+          cat sha256sums-linux.txt
+          cat sha256sums-arch.txt
+      - name: Upload to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.release-please.outputs.tag_name }}" \
+            ssgg-linux-x86_64.tar.gz \
+            sha256sums-linux.txt \
+            *.pkg.tar.zst \
+            sha256sums-arch.txt \
+            --clobber
+
+  build-windows:
+    name: Build Windows x86_64
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.1
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release binary
+        run: cargo build --release --locked
+      - name: Compute SHA-256 and rename
+        shell: pwsh
+        run: |
+          Copy-Item target\release\ssgg.exe ssgg-windows-x86_64.exe
+          $hash = (Get-FileHash ssgg-windows-x86_64.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  ssgg-windows-x86_64.exe" | Out-File -Encoding ascii sha256sums-windows.txt
+          Get-Content sha256sums-windows.txt
+      - name: Upload to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          gh release upload "${{ needs.release-please.outputs.tag_name }}" ssgg-windows-x86_64.exe sha256sums-windows.txt --clobber
