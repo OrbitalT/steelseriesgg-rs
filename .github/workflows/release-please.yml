@@ -53,7 +53,7 @@ jobs:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm
-          pacman -S --needed --noconfirm git rust systemd
+          pacman -S --needed --noconfirm git rust systemd github-cli
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
