@@ -6,6 +6,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
+#[cfg(unix)]
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tracing::{debug, warn};
@@ -148,17 +149,19 @@ impl HidDiagnostics {
                 }
             }
 
-            // Secure file open
-            let mut options = OpenOptions::new();
-            options.write(true).create(true).truncate(true);
+            // Secure file open offloaded to tokio blocking thread pool
+            let file = tokio::task::block_in_place(|| {
+                let mut options = OpenOptions::new();
+                options.write(true).create(true).truncate(true);
 
-            // Set file creation mode to 600 (rw-------)
-            options.mode(0o600);
+                // Set file creation mode to 600 (rw-------)
+                options.mode(0o600);
 
-            // Do not follow symlinks for the file itself
-            options.custom_flags(libc::O_NOFOLLOW);
+                // Do not follow symlinks for the file itself
+                options.custom_flags(libc::O_NOFOLLOW);
 
-            let file = options.open(path).map_err(Error::Io)?;
+                options.open(path).map_err(Error::Io)
+            })?;
 
             // Ensure file permissions are 600 (rw-------) even if file already existed
             let mut perms = file.metadata().map_err(Error::Io)?.permissions();
@@ -173,12 +176,14 @@ impl HidDiagnostics {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent).map_err(Error::Io)?;
             }
-            OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(path)
-                .map_err(Error::Io)
+            tokio::task::block_in_place(|| {
+                OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(path)
+                    .map_err(Error::Io)
+            })
         }
     }
 
