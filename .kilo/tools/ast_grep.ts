@@ -1,8 +1,11 @@
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { homedir } from "node:os";
+import { homedir, platform } from "node:os";
 import { dirname, join } from "node:path";
 import { tool } from "@opencode-ai/plugin";
+
+const IS_WINDOWS = platform() === "win32";
+const SG_BIN = IS_WINDOWS ? "sg.exe" : "sg";
 import { spawn } from "bun";
 
 const CLI_LANGUAGES = [
@@ -23,8 +26,10 @@ let _sgPath: string | null | undefined;
 function findSg(): string | null {
   if (_sgPath !== undefined) return _sgPath;
 
-  const bin = "sg";
-  const cachePath = join(process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "oh-my-opencode", "bin", bin);
+  const cacheBase = IS_WINDOWS
+    ? (process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"))
+    : (process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"));
+  const cachePath = join(cacheBase, "oh-my-opencode", "bin", SG_BIN);
   if (existsSync(cachePath)) {
     _sgPath = cachePath;
     return _sgPath;
@@ -33,7 +38,7 @@ function findSg(): string | null {
   try {
     const req = createRequire(import.meta.url);
     const pkgDir = dirname(req.resolve("@ast-grep/cli/package.json"));
-    const p = join(pkgDir, bin);
+    const p = join(pkgDir, SG_BIN);
     if (existsSync(p)) {
       _sgPath = p;
       return _sgPath;
@@ -41,8 +46,7 @@ function findSg(): string | null {
   } catch {}
 
   try {
-    const { stdout } = Bun.spawnSync(["which", bin], { stdout: "pipe" });
-    const p = new TextDecoder().decode(stdout).trim();
+    const p = Bun.which("sg");
     if (p && existsSync(p)) {
       _sgPath = p;
       return _sgPath;
@@ -189,12 +193,14 @@ const search = tool({
     include: tool.schema.string().optional().describe("Include glob."),
   },
   async execute(args) {
-    const sgPath = findSg();
-    if (!sgPath) return "ast-grep not found. Install: npm install -g @ast-grep/cli";
-    const workdir = process.cwd();
-    const subcommand = args.rewrite ? "replace" : "search";
-    const sgArgs = buildArgs(subcommand, args, workdir);
-    return runSg(sgPath, sgArgs, subcommand);
+    const result = await runSg({
+      pattern: args.pattern,
+      lang: (args.lang ?? "javascript") as Lang,
+      paths: args.paths ?? [],
+      globs: args.globs,
+      context: args.context,
+    });
+    return formatSearchResult(result);
   },
 });
 
@@ -210,11 +216,24 @@ const replace = tool({
     include: tool.schema.string().optional().describe("Include glob."),
   },
   async execute(args) {
-    const sgPath = findSg();
-    if (!sgPath) return "ast-grep not found. Install: npm install -g @ast-grep/cli";
-    const workdir = process.cwd();
-    const sgArgs = buildArgs("replace", { ...args, dryRun: args.dryRun ?? true }, workdir);
-    return runSg(sgPath, sgArgs, "replace");
+    if (args.dryRun ?? true) {
+      const result = await runSg({
+        pattern: args.pattern,
+        lang: (args.lang ?? "javascript") as Lang,
+        paths: args.paths ?? [],
+        globs: args.globs,
+        rewrite: args.rewrite,
+      });
+      return formatSearchResult(result);
+    }
+    const result = await runSgReplace({
+      pattern: args.pattern,
+      lang: (args.lang ?? "javascript") as Lang,
+      paths: args.paths ?? [],
+      globs: args.globs,
+      rewrite: args.rewrite,
+    });
+    return formatSearchResult(result);
   },
 });
 
