@@ -7,9 +7,8 @@ name: Release
 # uploads artifacts.
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -67,14 +66,15 @@ jobs:
           cat sha256sums-arch.txt
 
       - name: Upload to release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v3
-        with:
-          files: |
-            ssgg-linux-x86_64.tar.gz
-            sha256sums-linux.txt
-            *.pkg.tar.zst
-            sha256sums-arch.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            ssgg-linux-x86_64.tar.gz \
+            sha256sums-linux.txt \
+            *.pkg.tar.zst \
+            sha256sums-arch.txt \
+            --clobber
 
   # ---------------------------------------------------------------------------
   # Windows x86_64 (MSVC)
@@ -105,9 +105,8 @@ jobs:
           Get-Content sha256sums-windows.txt
 
       - name: Upload to release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v3
-        with:
-          files: |
-            ssgg-windows-x86_64.exe
-            sha256sums-windows.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" ssgg-windows-x86_64.exe sha256sums-windows.txt --clobber
