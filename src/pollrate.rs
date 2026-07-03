@@ -106,7 +106,7 @@ impl DeviceType {
     fn sysfs_path(&self) -> &'static str {
         match self {
             DeviceType::Mouse => "/sys/module/usbhid/parameters/mousepoll",
-            DeviceType::Keyboard => "/sys/module/usbhid/parameters/kbdpoll",
+            DeviceType::Keyboard => "/sys/module/usbhid/parameters/kbpoll",
         }
     }
 
@@ -432,7 +432,7 @@ mod tests {
         );
         assert_eq!(
             DeviceType::Keyboard.sysfs_path(),
-            "/sys/module/usbhid/parameters/kbdpoll"
+            "/sys/module/usbhid/parameters/kbpoll"
         );
     }
 }

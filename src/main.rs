@@ -1650,11 +1650,7 @@ async fn cmd_validate(
         info!("Performance benchmarks enabled");
     }
 
-    let devices = manager.devices();
-    let keyboards: Vec<_> = devices
-        .into_iter()
-        .filter(|info| info.device_type == DeviceType::Keyboard)
-        .collect();
+    let keyboards = manager.keyboards();
 
     if keyboards.is_empty() {
         println!("⚠️  No SteelSeries keyboards found for validation");
@@ -1782,7 +1778,9 @@ async fn cmd_validate(
     println!("   Total devices: {}", all_reports.len());
     println!("   Healthy devices: {}/{}", total_healthy, all_reports.len());
 
-    if total_healthy == all_reports.len() {
+    if all_reports.is_empty() {
+        println!("   ⚠️  No devices could be opened for validation - check errors above");
+    } else if total_healthy == all_reports.len() {
         println!("   🎉 All devices passed validation!");
     } else {
         println!("   ⚠️  Some devices have issues - check details above");
@@ -1792,11 +1790,7 @@ async fn cmd_validate(
 }
 
 async fn cmd_performance(manager: &DeviceManager, action: PerformanceAction) -> Result<()> {
-    let keyboards: Vec<_> = manager
-        .devices()
-        .into_iter()
-        .filter(|info| info.device_type == DeviceType::Keyboard)
-        .collect();
+    let keyboards = manager.keyboards();
 
     if keyboards.is_empty() {
         println!("⚠️  No SteelSeries keyboards found for performance monitoring");

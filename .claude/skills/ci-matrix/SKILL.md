@@ -40,6 +40,22 @@ cargo test --locked
 cargo test --locked --features sonar
 ```
 
+**7. Build — default features**
+```
+cargo build --release --locked
+```
+
+**8. Build — sonar feature**
+```
+cargo build --release --locked --features sonar
+```
+
+**9. Build — audio feature**
+```
+cargo build --release --locked --features audio
+```
+Skip and note as skipped if `libpulse-dev` is not installed (same condition as step 4).
+
 ## Report format
 
 After all steps pass, report:

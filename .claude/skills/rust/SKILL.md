@@ -1,62 +1,58 @@
 ---
 name: rust
-description: Rust specialist for async services, safe systems programming, and production tooling with Tokio, Axum, SQLx, and clippy-driven quality checks. Use when building or refactoring Rust code.
+description: Rust conventions for steelseriesgg-rs — error handling, unsafe, feature-gated commands. Use when writing or refactoring any .rs file or Cargo.toml.
 license: Apache-2.0
 compatibility: Designed for Claude Code
 allowed-tools: Read, Grep, Glob, Bash
 user-invocable: false
 metadata:
-  version: "2.0.0"
+  version: "3.0.0"
   category: "language"
   status: "active"
-  updated: "2026-02-22"
+  updated: "2026-07-03"
 ---
 
-# Rust Development (Lean)
+# Rust Development
 
 ## When to use
 
 - `.rs` files and `Cargo.toml`
-- Async services, CLI tools, systems components
 - Ownership/lifetime, trait, or performance-sensitive work
 
 ## Defaults
 
-- Prefer explicit error types at library boundaries.
-- Keep unsafe usage isolated and documented.
-- Use clippy and rustfmt as non-optional quality gates.
-- Favor simple ownership flows over complex lifetimes when possible.
+- Library boundaries (`src/error.rs` and below): `crate::error::Error` via `thiserror`. `main.rs` and `src/bin/*`: `anyhow` with `.context()`.
+- No `unwrap`/`expect` outside `#[cfg(test)]`. Propagate with `?`.
+- `unsafe` blocks require an inline `// SAFETY:` comment naming the concrete invariant (see `.claude/rules/unsafe-blocks.md`).
+- Favor simple ownership flows (`&T` borrows) over complex lifetimes.
 
 ## Quick workflow
 
-1. Identify crate boundaries and public APIs.
-2. Implement minimal change with clear types/errors.
+1. Identify crate boundaries and public APIs (`src/lib.rs` re-exports).
+2. Implement the minimal change with clear types/errors.
 3. Add/update tests for changed behavior.
-4. Run fmt, clippy, and tests.
+4. Run fmt, clippy, and tests — with `--features <flag>` if the change touches feature-gated code.
 
 ## Commands
 
-- Format: `cargo fmt --all`
-- Lint: `cargo clippy --all-targets --all-features -- -D warnings`
-- Test: `cargo test --all-features`
-- Build release: `cargo build --release`
+Match `.github/workflows/ci.yml` exactly — this repo does not use `--all-features` (the `audio` and `sonar` features are independent and CI tests them separately; `audio` needs `libpulse-dev`).
+
+- Format: `cargo fmt --all -- --check`
+- Lint: `cargo clippy --all-targets --locked -- -D warnings` (add `--features sonar` or `--features audio` for feature-gated changes)
+- Test: `cargo test --locked` (add `--features sonar` for feature-gated changes; `audio` is excluded from CI test job)
+- Release build: `cargo build --release --locked`
+
+For the full matrix across all feature combinations, use the `ci-matrix` skill instead of running these piecemeal.
 
 ## Implementation checklist
 
-- `Result<T, E>` and `?` used consistently.
-- Avoid panics in non-test code paths unless explicitly fatal.
-- Serialization contracts versioned when exposed externally.
-- Concurrency primitives chosen deliberately (`Mutex`, `RwLock`, channels, semaphore).
+- `Result<T, E>` and `?` used consistently; no ignored `Result`s.
+- No mutable global state.
+- New dependencies justified (avoid heavy transitive deps); `hidapi` version pin (`=2.6.6`) never changed without explicit task justification.
+- Experimental protocol code labeled per `.claude/rules/experimental-protocol.md`.
 
 ## Validation checklist
 
-- `cargo fmt` clean.
-- `cargo clippy` clean.
+- `cargo fmt --all -- --check` clean.
+- `cargo clippy --all-targets --locked -- -D warnings` clean (relevant feature flags included).
 - Tests pass.
-- New dependencies justified.
-
-## References
-
-- [references/reference.md](./references/reference.md) - compact guidance and docs links
-- [references/examples.md](./references/examples.md) - concise service/test patterns
-- `../AGENT_SKILL_SPEC.md` - shared Anthropic/Copilot alignment

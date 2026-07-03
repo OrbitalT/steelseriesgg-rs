@@ -350,6 +350,11 @@ impl HidDiagnostics {
     /// Get diagnostic summary.
     pub fn get_summary(&self) -> String {
         let analysis = self.analyze_timing_patterns();
+        let failure_rate = if analysis.total_operations > 0 {
+            (analysis.failed_operations as f64 / analysis.total_operations as f64) * 100.0
+        } else {
+            0.0
+        };
 
         format!(
             "HID Diagnostics Summary:\n\
@@ -362,7 +367,7 @@ impl HidDiagnostics {
              Log File: {}",
             analysis.total_operations,
             analysis.failed_operations,
-            (analysis.failed_operations as f64 / analysis.total_operations as f64) * 100.0,
+            failure_rate,
             analysis.avg_send_time.as_secs_f64() * 1000.0,
             analysis.max_send_time.as_secs_f64() * 1000.0,
             analysis.avg_receive_time.as_secs_f64() * 1000.0,
