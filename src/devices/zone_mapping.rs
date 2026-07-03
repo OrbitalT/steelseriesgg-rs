@@ -235,9 +235,11 @@ impl ZoneEffect {
             }
 
             ZoneEffect::Custom(colors) => {
-                let mut result = Vec::with_capacity(zone_count);
-                for i in 0..zone_count {
-                    result.push(colors.get(i).copied().unwrap_or(Color::BLACK));
+                let mut result = colors.clone();
+                if result.len() < zone_count {
+                    result.resize(zone_count, Color::BLACK);
+                } else if result.len() > zone_count {
+                    result.truncate(zone_count);
                 }
                 result
             }
