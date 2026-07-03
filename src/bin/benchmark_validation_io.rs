@@ -1,8 +1,8 @@
 use std::time::Instant;
 use steelseries_gg::validation::MemorySample;
 
-fn main() {
-    let rt = tokio::runtime::Runtime::new().unwrap();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let rt = tokio::runtime::Runtime::new()?;
     let start = Instant::now();
     let iters = 1000;
 
@@ -20,10 +20,12 @@ fn main() {
             "Benchmark aborted after {} successful iterations: failed to collect memory sample: {}",
             iteration, err
         );
-        return;
+        return Ok(());
     }
 
     let elapsed = start.elapsed();
     println!("Baseline: {} iterations took {:?}", iters, elapsed);
     println!("Average per iteration: {:?}", elapsed / iters as u32);
+
+    Ok(())
 }
