@@ -598,12 +598,11 @@ impl DeviceManager {
         let now = Instant::now();
         let mut pending = pending_events.write().await;
 
-        if let Some(&last_event) = pending.get(fingerprint) {
-            if now.duration_since(last_event) < config.debounce_time {
-                // Update the timestamp to extend debounce
-                pending.insert(fingerprint.clone(), now);
-                return true;
-            }
+        if let Some(last_event) = pending.get_mut(fingerprint) {
+            let debounced = now.duration_since(*last_event) < config.debounce_time;
+            // Update the timestamp to extend debounce and avoid cloning fingerprint
+            *last_event = now;
+            return debounced;
         }
 
         // Record this event time
