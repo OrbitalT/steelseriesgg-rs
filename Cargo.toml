@@ -18,27 +18,15 @@ path = "src/lib.rs"
 name = "ssgg"
 path = "src/main.rs"
 
-# Discovery and diagnostics binaries
-[[bin]]
-name = "discover_actuation"
-path = "src/bin/discover_actuation.rs"
 
-[[bin]]
-name = "sonar_control"
-path = "src/bin/sonar_control.rs"
-required-features = ["sonar"]
 
 [features]
 default = []
-audio = ["dep:libpulse-binding"]
-sonar = ["dep:reqwest"]
-experimental-apex-2023 = []
 
 [dependencies]
 anyhow = "1.0.102"
 async-trait = "0.1.89"
-# HTTP server for GameSense API
-axum = { version = "0.8.9", default-features = false, features = ["tokio", "http1", "http2", "json"] }
+# HTTP server for GameSense API (Removed for cleanup)
 
 # Date/time for diagnostic timestamps
 chrono = { version = "0.4.44", features = ["serde"] }
@@ -54,11 +42,10 @@ directories = "6.0.0"
 # Terminal UI
 indicatif = "0.18.4"
 libc = "0.2.186" # For root permission checks (geteuid)
-libpulse-binding = { version = "2.30.1", optional = true }
+
 parking_lot = "0.12.5"
 
-# HTTP client for Sonar API (optional, only needed for sonar feature)
-reqwest = { version = "0.13.4", features = ["json"], optional = true }
+# HTTP client for Sonar API (Removed for cleanup)
 rustix = { version = "1.1.4", features = ["process"] }
 
 # Serialization
@@ -73,9 +60,9 @@ tabled = "0.21.0"
 # Error handling
 thiserror = "2.0.18"
 # Async runtime - only include needed features to reduce binary size
-tokio = { version = "1.52.3", default-features = false, features = ["rt-multi-thread", "macros", "signal", "fs"] }
+tokio = { version = "1.52.3", default-features = false, features = ["rt-multi-thread", "macros", "signal", "fs", "time", "sync"] }
 toml = "1.1.2"
-tower-http = { version = "0.7.0", default-features = false, features = ["cors"] }
+
 
 # Logging
 tracing = "0.1.44"

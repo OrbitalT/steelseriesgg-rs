@@ -20,15 +20,14 @@ pub mod devices;
 pub mod diagnostics_export;
 pub mod error;
 pub mod fs_utils;
-pub mod gamesense;
+
 pub mod performance;
 pub mod pollrate;
 pub mod profiles;
 pub mod rgb;
 pub mod validation;
 
-#[cfg(any(feature = "audio", feature = "sonar"))]
-pub mod audio;
+
 
 pub use error::{Error, Result};
 

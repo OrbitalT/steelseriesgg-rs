@@ -55,3 +55,6 @@ apexctl/
 *.pml.csv
 *.etl
 *.etl.csv
+
+# Backlog archive
+.backlog_archive/

@@ -426,7 +426,6 @@ impl KeyMappingDatabase {
         // Complete TKL keycode list: (4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 73 74 75 76 77 78 79 80 81 82 100 133 135 136 137 138 139 224 225 226 227 228 229 230 231 240)
 
         // Apex Pro TKL (2023) - Verified HID codes from SteelSeries GG
-        self.add_apex_pro_tkl_2023_mapping();
 
         // Apex Pro (full) - Verified HID codes from SteelSeries GG
         self.add_apex_pro_full_mapping();
@@ -439,131 +438,7 @@ impl KeyMappingDatabase {
     ///
     /// HID codes discovered from SteelSeries GG 107.0.0 configuration migration files.
     /// Complete TKL keycode list: 87 keys total
-    fn add_apex_pro_tkl_2023_mapping(&mut self) {
-        // Complete TKL HID code list from apex_7+pro.migration
-        let tkl_hid_codes = vec![
-            4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-            32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58,
-            59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 100, 133, 135, 136,
-            137, 138, 139, 224, 225, 226, 227, 228, 229, 230, 231, 240,
-        ];
-
-        let mut mapping = KeyMapping::new(
-            product_ids::APEX_PRO_TKL_2023,
-            KeyboardLayout::TenKeyLess,
-            "Apex Pro TKL (2023)".to_string(),
-            tkl_hid_codes,
-        );
-
-        // Function row (F1-F12 = 58-69, Escape = 41)
-        mapping.add_key(KeyId::Escape, KeyAddress::new(41));
-        mapping.add_key(KeyId::F1, KeyAddress::new(58));
-        mapping.add_key(KeyId::F2, KeyAddress::new(59));
-        mapping.add_key(KeyId::F3, KeyAddress::new(60));
-        mapping.add_key(KeyId::F4, KeyAddress::new(61));
-        mapping.add_key(KeyId::F5, KeyAddress::new(62));
-        mapping.add_key(KeyId::F6, KeyAddress::new(63));
-        mapping.add_key(KeyId::F7, KeyAddress::new(64));
-        mapping.add_key(KeyId::F8, KeyAddress::new(65));
-        mapping.add_key(KeyId::F9, KeyAddress::new(66));
-        mapping.add_key(KeyId::F10, KeyAddress::new(67));
-        mapping.add_key(KeyId::F11, KeyAddress::new(68));
-        mapping.add_key(KeyId::F12, KeyAddress::new(69));
-
-        // Number row (1-0 = 30-39, Backtick = 53, Minus = 45, Equal = 46, Backspace = 42)
-        mapping.add_key(KeyId::Backtick, KeyAddress::new(53));
-        mapping.add_key(KeyId::Key1, KeyAddress::new(30));
-        mapping.add_key(KeyId::Key2, KeyAddress::new(31));
-        mapping.add_key(KeyId::Key3, KeyAddress::new(32));
-        mapping.add_key(KeyId::Key4, KeyAddress::new(33));
-        mapping.add_key(KeyId::Key5, KeyAddress::new(34));
-        mapping.add_key(KeyId::Key6, KeyAddress::new(35));
-        mapping.add_key(KeyId::Key7, KeyAddress::new(36));
-        mapping.add_key(KeyId::Key8, KeyAddress::new(37));
-        mapping.add_key(KeyId::Key9, KeyAddress::new(38));
-        mapping.add_key(KeyId::Key0, KeyAddress::new(39));
-        mapping.add_key(KeyId::Minus, KeyAddress::new(45));
-        mapping.add_key(KeyId::Equal, KeyAddress::new(46));
-        mapping.add_key(KeyId::Backspace, KeyAddress::new(42));
-
-        // QWERTY row (Tab = 43, Q-P = 20-25, Brackets = 47-48, Backslash = 49)
-        mapping.add_key(KeyId::Tab, KeyAddress::new(43));
-        mapping.add_key(KeyId::Q, KeyAddress::new(20));
-        mapping.add_key(KeyId::W, KeyAddress::new(26));
-        mapping.add_key(KeyId::E, KeyAddress::new(8));
-        mapping.add_key(KeyId::R, KeyAddress::new(21));
-        mapping.add_key(KeyId::T, KeyAddress::new(23));
-        mapping.add_key(KeyId::Y, KeyAddress::new(28));
-        mapping.add_key(KeyId::U, KeyAddress::new(24));
-        mapping.add_key(KeyId::I, KeyAddress::new(12));
-        mapping.add_key(KeyId::O, KeyAddress::new(18));
-        mapping.add_key(KeyId::P, KeyAddress::new(19));
-        mapping.add_key(KeyId::LeftBracket, KeyAddress::new(47));
-        mapping.add_key(KeyId::RightBracket, KeyAddress::new(48));
-        mapping.add_key(KeyId::Backslash, KeyAddress::new(49));
-
-        // Home row (CapsLock = 57, A-L = 4-15, Semicolon = 51, Quote = 52, Enter = 40)
-        mapping.add_key(KeyId::CapsLock, KeyAddress::new(57));
-        mapping.add_key(KeyId::A, KeyAddress::new(4));
-        mapping.add_key(KeyId::S, KeyAddress::new(22));
-        mapping.add_key(KeyId::D, KeyAddress::new(7));
-        mapping.add_key(KeyId::F, KeyAddress::new(9));
-        mapping.add_key(KeyId::G, KeyAddress::new(10));
-        mapping.add_key(KeyId::H, KeyAddress::new(11));
-        mapping.add_key(KeyId::J, KeyAddress::new(13));
-        mapping.add_key(KeyId::K, KeyAddress::new(14));
-        mapping.add_key(KeyId::L, KeyAddress::new(15));
-        mapping.add_key(KeyId::Semicolon, KeyAddress::new(51));
-        mapping.add_key(KeyId::Quote, KeyAddress::new(52));
-        mapping.add_key(KeyId::Enter, KeyAddress::new(40));
-
-        // Bottom letter row (LeftShift = 225, Z-M = 29-16, Comma = 54, Period = 55, Slash = 56, RightShift = 229)
-        mapping.add_key(KeyId::LeftShift, KeyAddress::new(225));
-        mapping.add_key(KeyId::Z, KeyAddress::new(29));
-        mapping.add_key(KeyId::X, KeyAddress::new(27));
-        mapping.add_key(KeyId::C, KeyAddress::new(6));
-        mapping.add_key(KeyId::V, KeyAddress::new(25));
-        mapping.add_key(KeyId::B, KeyAddress::new(5));
-        mapping.add_key(KeyId::N, KeyAddress::new(17));
-        mapping.add_key(KeyId::M, KeyAddress::new(16));
-        mapping.add_key(KeyId::Comma, KeyAddress::new(54));
-        mapping.add_key(KeyId::Period, KeyAddress::new(55));
-        mapping.add_key(KeyId::Slash, KeyAddress::new(56));
-        mapping.add_key(KeyId::RightShift, KeyAddress::new(229));
-
-        // Bottom row (LeftCtrl = 224, LeftWin = 227, LeftAlt = 226, Space = 44, RightAlt = 230, RightWin = 231, Menu = 101, RightCtrl = 228)
-        mapping.add_key(KeyId::LeftCtrl, KeyAddress::new(224));
-        mapping.add_key(KeyId::LeftWin, KeyAddress::new(227));
-        mapping.add_key(KeyId::LeftAlt, KeyAddress::new(226));
-        mapping.add_key(KeyId::Space, KeyAddress::new(44));
-        mapping.add_key(KeyId::RightAlt, KeyAddress::new(230));
-        mapping.add_key(KeyId::RightWin, KeyAddress::new(231));
-        mapping.add_key(KeyId::Menu, KeyAddress::new(101));
-        mapping.add_key(KeyId::RightCtrl, KeyAddress::new(228));
-
-        // Navigation cluster (Insert = 73, Home = 74, PageUp = 75, Delete = 76, End = 77, PageDown = 78)
-        mapping.add_key(KeyId::Insert, KeyAddress::new(73));
-        mapping.add_key(KeyId::Home, KeyAddress::new(74));
-        mapping.add_key(KeyId::PageUp, KeyAddress::new(75));
-        mapping.add_key(KeyId::Delete, KeyAddress::new(76));
-        mapping.add_key(KeyId::End, KeyAddress::new(77));
-        mapping.add_key(KeyId::PageDown, KeyAddress::new(78));
-
-        // Arrow cluster (Right = 79, Left = 80, Down = 81, Up = 82)
-        mapping.add_key(KeyId::ArrowRight, KeyAddress::new(79));
-        mapping.add_key(KeyId::ArrowLeft, KeyAddress::new(80));
-        mapping.add_key(KeyId::ArrowDown, KeyAddress::new(81));
-        mapping.add_key(KeyId::ArrowUp, KeyAddress::new(82));
-
-        // SteelSeries key (HID 240 - discovered from migration files)
-        mapping.add_key(KeyId::SteelSeriesKey, KeyAddress::new(240));
-
-        let mut wireless_mapping = mapping.clone();
-        wireless_mapping.product_id = product_ids::APEX_PRO_TKL_2023_WIRELESS;
-        self.mappings.insert(product_ids::APEX_PRO_TKL_2023, mapping);
-        self.mappings
-            .insert(product_ids::APEX_PRO_TKL_2023_WIRELESS, wireless_mapping);
-    }
+    
 
     /// Add Apex Pro (full-size) key mapping with verified HID codes.
     fn add_apex_pro_full_mapping(&mut self) {
@@ -772,7 +647,7 @@ mod tests {
     fn test_key_mapping_creation() {
         let supported_codes = vec![4, 5, 6, 7, 8]; // A, B, C, D, E
         let mut mapping = KeyMapping::new(
-            product_ids::APEX_PRO_TKL_2023,
+            product_ids::APEX_3_TKL,
             KeyboardLayout::TenKeyLess,
             "Test Keyboard".to_string(),
             supported_codes,
@@ -795,16 +670,11 @@ mod tests {
         let db = KeyMappingDatabase::new();
 
         // Should support known products
-        assert!(db.supports_product(product_ids::APEX_PRO_TKL_2023));
         assert!(db.supports_product(product_ids::APEX_PRO));
         assert!(!db.supports_product(0xFFFF)); // Unknown product
 
-        // Should have mappings
-        let mapping = db.get_mapping(product_ids::APEX_PRO_TKL_2023);
-        assert!(mapping.is_some());
-
-        let mapping = mapping.unwrap();
-        assert_eq!(mapping.layout, KeyboardLayout::TenKeyLess);
+        let mapping = db.get_mapping(product_ids::APEX_PRO).unwrap();
+        assert_eq!(mapping.layout, KeyboardLayout::FullSize);
         assert!(mapping.total_keys > 0);
 
         // Verify specific HID codes are mapped
@@ -817,7 +687,7 @@ mod tests {
     fn test_key_mapping_stats() {
         let supported_codes = vec![4, 5, 6, 7, 8, 9, 10]; // A-G
         let mut mapping = KeyMapping::new(
-            product_ids::APEX_PRO_TKL_2023,
+            product_ids::APEX_3_TKL,
             KeyboardLayout::TenKeyLess,
             "Test".to_string(),
             supported_codes,

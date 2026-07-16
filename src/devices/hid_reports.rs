@@ -44,11 +44,7 @@ pub enum CommandCode {
     /// NOTE: This command code is a placeholder. The actual per-key RGB command
     /// for SteelSeries keyboards has not been discovered and may be different.
     PerKeyRgb = 0x23,
-    /// Apex Pro TKL 2023 experimental direct per-key RGB control (0x40)
-    ///
-    /// NOTE: This command is based on reverse-engineering notes and is kept
-    /// behind the `experimental-apex-2023` feature until validated on hardware.
-    Apex2023Direct = 0x40,
+
     /// Actuation point control (0x2D) - EXPERIMENTAL
     /// NOTE: This command code is experimental based on hardware research.
     ActuationControl = 0x2D,
@@ -63,7 +59,6 @@ impl fmt::Display for CommandCode {
             CommandCode::ReactiveMode => write!(f, "REACTIVE"),
             CommandCode::ColorShift => write!(f, "COLOR_SHIFT"),
             CommandCode::PerKeyRgb => write!(f, "PERKEY_RGB_EXPERIMENTAL"),
-            CommandCode::Apex2023Direct => write!(f, "APEX2023_DIRECT_EXPERIMENTAL"),
             CommandCode::ActuationControl => write!(f, "ACTUATION_CTRL_EXPERIMENTAL"),
         }
     }
@@ -82,7 +77,6 @@ impl CommandCode {
             0x25 => Some(CommandCode::ReactiveMode),
             0x26 => Some(CommandCode::ColorShift),
             0x23 | 0x2A => Some(CommandCode::PerKeyRgb),
-            0x40 => Some(CommandCode::Apex2023Direct),
             0x2D => Some(CommandCode::ActuationControl),
             _ => None,
         }
@@ -697,116 +691,6 @@ pub struct Apex2023DirectCommand {
     /// `key_id` is a USB HID keyboard usage ID (e.g. 0x04 = A, 0x28 = Enter).
     /// Keys are transmitted in the order added; the firmware ignores order.
     pub key_colors: smallvec::SmallVec<[(u8, Color); 84]>,
-}
-
-#[cfg(feature = "experimental-apex-2023")]
-impl Apex2023DirectCommand {
-    /// Maximum key entries per report (confirmed via live IOCTL capture).
-    ///
-    /// The 645-byte report carries exactly 84 `[key_id R G B]` entries.
-    /// The count byte (offset 2) is always 0x54 = 84.
-    pub const MAX_KEYS_PER_REPORT: usize = 84;
-
-    /// Fixed count byte transmitted at offset 2 of every per-key RGB report.
-    const KEY_COUNT_BYTE: u8 = 0x54;
-
-    /// Create an empty direct command.
-    pub fn new() -> Self {
-        Self {
-            key_colors: smallvec::SmallVec::new(),
-        }
-    }
-
-    /// Add or update a logical key color.
-    pub fn set_key_color(&mut self, key_id: u8, color: Color) {
-        // Linear scan via a loop over idiomatic slice iterator.
-        // The overhead of iter_mut().find() closure is eliminated.
-        for (existing_key_id, existing_color) in &mut self.key_colors {
-            if *existing_key_id == key_id {
-                *existing_color = color;
-                return;
-            }
-        }
-
-        // Prevent exceeding the fixed boundary when pushing
-        if self.key_colors.len() < Self::MAX_KEYS_PER_REPORT {
-            self.key_colors.push((key_id, color));
-        }
-    }
-
-    /// Number of logical keys in this command.
-    pub fn key_count(&self) -> usize {
-        self.key_colors.len()
-    }
-
-    /// Whether the command contains no key updates.
-    pub fn is_empty(&self) -> bool {
-        self.key_colors.is_empty()
-    }
-}
-
-#[cfg(feature = "experimental-apex-2023")]
-impl Default for Apex2023DirectCommand {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[cfg(feature = "experimental-apex-2023")]
-impl HidCommand for Apex2023DirectCommand {
-    fn command_code(&self) -> CommandCode {
-        CommandCode::Apex2023Direct
-    }
-
-    fn serialize(&self, buffer: &mut [u8], _device_type: HidDeviceType) -> Result<usize> {
-        self.validate()?;
-
-        if buffer.len() < APEX_2023_PERKEY_REPORT_SIZE {
-            return Err(Error::DeviceCommunication(format!(
-                "Buffer too small: {} bytes (expected {})",
-                buffer.len(),
-                APEX_2023_PERKEY_REPORT_SIZE
-            )));
-        }
-
-        buffer[..APEX_2023_PERKEY_REPORT_SIZE].fill(0);
-
-        buffer[0] = 0x00; // report ID
-        buffer[1] = CommandCode::Apex2023Direct as u8;
-        buffer[2] = Self::KEY_COUNT_BYTE;
-
-        let mut offset = 3;
-        for (key_id, color) in &self.key_colors {
-            buffer[offset] = *key_id;
-            buffer[offset + 1] = color.r;
-            buffer[offset + 2] = color.g;
-            buffer[offset + 3] = color.b;
-            offset += 4;
-        }
-
-        Ok(APEX_2023_PERKEY_REPORT_SIZE)
-    }
-
-    fn validate(&self) -> Result<()> {
-        if self.key_colors.is_empty() {
-            return Err(Error::DeviceCommunication(
-                "Apex 2023 per-key RGB command must have at least one key".to_string(),
-            ));
-        }
-
-        if self.key_colors.len() > Self::MAX_KEYS_PER_REPORT {
-            return Err(Error::DeviceCommunication(format!(
-                "Apex 2023 per-key RGB command exceeds {} keys per report",
-                Self::MAX_KEYS_PER_REPORT
-            )));
-        }
-
-        Ok(())
-    }
-
-    fn description(&self) -> String {
-        format!("Apex 2023 per-key RGB for {} keys", self.key_colors.len())
-    }
 }
 
 /// Builder for creating batch per-key RGB operations.

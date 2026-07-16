@@ -31,6 +31,7 @@ pub use zone_mapping::{ZoneEffect, ZoneFallback, ZoneInfo, ZoneMapping, ZonePosi
 pub enum DeviceType {
     Keyboard,
     Headset,
+    Speaker,
     Unknown,
 }
 
@@ -39,6 +40,7 @@ impl fmt::Display for DeviceType {
         match self {
             DeviceType::Keyboard => write!(f, "Keyboard"),
             DeviceType::Headset => write!(f, "Headset"),
+            DeviceType::Speaker => write!(f, "Speaker"),
             DeviceType::Unknown => write!(f, "Unknown"),
         }
     }
@@ -454,6 +456,7 @@ pub mod product_ids {
     // Arctis Nova 3 Wireless (unverified — GG firmware names only).
     pub const ARCTIS_NOVA_3_WIRELESS_RX: u16 = 0x2267;
     pub const ARCTIS_NOVA_3_WIRELESS_TX: u16 = 0x2269;
+    pub const ARENA_7: u16 = 0x1a00;
 }
 
 /// Get device type from product ID.
@@ -508,9 +511,14 @@ pub fn device_type_from_product_id(product_id: u16) -> DeviceType {
         | ARCTIS_NOVA_7P_TX
         | ARCTIS_NOVA_5_RX
         | ARCTIS_NOVA_5_TX
+        | ARCTIS_NOVA_5_TX
+        | ARCTIS_NOVA_7_RX
+        | ARCTIS_NOVA_7_TX
         | ARCTIS_NOVA_PRO_OMNI
         | ARCTIS_NOVA_3_WIRELESS_RX
         | ARCTIS_NOVA_3_WIRELESS_TX => DeviceType::Headset,
+
+        ARENA_7 => DeviceType::Speaker,
 
         _ => DeviceType::Unknown,
     }
@@ -536,7 +544,7 @@ pub fn device_name_from_product_id(product_id: u16) -> &'static str {
         APEX_PRO_TKL_2023 => "Apex Pro TKL (2023)",
         APEX_PRO_TKL_2023_WIRELESS | APEX_PRO_TKL_2023_WIRELESS_2 => "Apex Pro TKL (2023) Wireless",
         APEX_9_TKL => "Apex 9 TKL",
-        APEX_PRO_2024 => "Apex Pro (2024)",
+        APEX_PRO_2024 => "Apex Pro Gen 3",
         APEX_PRO_TKL_2024 => "Apex Pro TKL (2024)",
         APEX_PRO_TKL_WIRELESS_2024_DONGLE => "Apex Pro TKL Wireless (2024) (Dongle)",
         APEX_PRO_TKL_WIRELESS_2024 => "Apex Pro TKL Wireless (2024)",
@@ -567,6 +575,7 @@ pub fn device_name_from_product_id(product_id: u16) -> &'static str {
         ARCTIS_NOVA_PRO_OMNI => "Arctis Nova Pro Omni",
         ARCTIS_NOVA_3_WIRELESS_RX => "Arctis Nova 3 Wireless (RX)",
         ARCTIS_NOVA_3_WIRELESS_TX => "Arctis Nova 3 Wireless (TX)",
+        ARENA_7 => "Arena 7 Speakers",
         _ => "Unknown SteelSeries Device",
     }
 }

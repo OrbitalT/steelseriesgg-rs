@@ -17,7 +17,6 @@ use steelseries_gg::devices::{
     discovery::{DeviceFingerprint, HotPlugEvent, print_device_summary},
 };
 use steelseries_gg::fs_utils::{secure_write, secure_write_async};
-use steelseries_gg::gamesense::GameSenseServer;
 use steelseries_gg::profiles::{KeyboardProfile, Profile, ProfileManager};
 use steelseries_gg::rgb::{Color, Effect, RgbController, WaveDirection};
 use steelseries_gg::validation::RgbValidator;
@@ -97,13 +96,6 @@ enum Commands {
     Pollrate {
         #[command(subcommand)]
         action: PollrateAction,
-    },
-
-    /// Start the GameSense server
-    Server {
-        /// Port to listen on
-        #[arg(short, long, default_value = "27301")]
-        port: u16,
     },
 
     /// Run validation tests on connected devices
@@ -687,10 +679,6 @@ async fn main() -> Result<()> {
 
         Commands::Pollrate { action } => {
             cmd_pollrate(action).await?;
-        }
-
-        Commands::Server { port } => {
-            cmd_server(port).await?;
         }
 
         Commands::Validate {
@@ -2082,20 +2070,10 @@ async fn export_performance_stats(
     Ok(())
 }
 
-async fn cmd_server(port: u16) -> Result<()> {
-    info!("Starting GameSense server on port {}", port);
-
-    let server = GameSenseServer::new("127.0.0.1", port)?;
-    server.run().await?;
-
-    Ok(())
-}
-
 /// Daemon state for managing connected devices and RGB controllers.
 struct DaemonState {
     keyboards: HashMap<String, (Box<dyn Keyboard>, RgbController, DeviceInfo)>,
     headsets: HashMap<String, (Box<dyn Headset>, DeviceInfo)>,
-    gamesense_overlays: Arc<HashMap<String, (Color, std::time::Instant)>>, // zone -> (color, expiry)
     /// Device fingerprints for tracking devices across reconnections
     device_fingerprints: HashMap<String, DeviceFingerprint>,
     /// Profile manager for applying settings to reconnected devices
@@ -2112,7 +2090,6 @@ impl DaemonState {
         Ok(Self {
             keyboards: HashMap::new(),
             headsets: HashMap::new(),
-            gamesense_overlays: Arc::new(HashMap::new()),
             device_fingerprints: HashMap::new(),
             profile_manager,
             state_store,
@@ -2218,8 +2195,8 @@ impl DaemonState {
                     }
                 }
             }
-            DeviceType::Unknown => {
-                debug!("Hot-plug: Ignoring unknown device: {}", info.name);
+            DeviceType::Unknown | DeviceType::Speaker => {
+                debug!("Hot-plug: Ignoring unhandled device type: {}", info.name);
             }
         }
 
@@ -2303,8 +2280,6 @@ async fn cmd_daemon(mut manager: DeviceManager) -> Result<()> {
     initialize_devices(&manager, daemon_state.clone()).await;
 
     // Start GameSense server in background if enabled
-    start_gamesense_server(&config, daemon_state.clone());
-
     // Use provided device manager
     print_device_summary(&manager);
 
@@ -2397,6 +2372,8 @@ async fn cmd_status(_initial_manager: &DeviceManager, device_filter: &str, refre
                 DeviceType::Keyboard => "Keyboard",
                 DeviceType::Headset => "Headset",
                 DeviceType::Unknown => "Unknown",
+                DeviceType::Speaker => "Speaker",
+                DeviceType::Speaker => "Speaker",
             };
 
             pb.set_message(format!("Status: Connected | Type: {}", device_type_str));
@@ -2426,6 +2403,8 @@ async fn cmd_status(_initial_manager: &DeviceManager, device_filter: &str, refre
                             DeviceType::Keyboard => "Keyboard",
                             DeviceType::Headset => "Headset",
                             DeviceType::Unknown => "Unknown",
+                DeviceType::Speaker => "Speaker",
+                DeviceType::Speaker => "Speaker",
                         };
 
                         // Check if device still exists
@@ -2472,6 +2451,8 @@ async fn cmd_status(_initial_manager: &DeviceManager, device_filter: &str, refre
                 DeviceType::Keyboard => "Keyboard",
                 DeviceType::Headset => "Headset",
                 DeviceType::Unknown => "Unknown",
+                DeviceType::Speaker => "Speaker",
+                DeviceType::Speaker => "Speaker",
             };
 
             rows.push(DeviceRow {
@@ -2933,60 +2914,6 @@ async fn initialize_devices(manager: &DeviceManager, daemon_state: Arc<RwLock<Da
     }
 }
 
-fn start_gamesense_server(config: &Config, daemon_state: Arc<RwLock<DaemonState>>) {
-    if config.gamesense.enabled {
-        let gs_bind = config.gamesense.bind_address.clone();
-        let gs_port = config.gamesense.port;
-        let daemon_state_clone = daemon_state.clone();
-
-        tokio::spawn(async move {
-            match GameSenseServer::new(&gs_bind, gs_port) {
-                Ok(server) => {
-                    // Set RGB callback to update overlays with optimized async handling
-                    server
-                        .set_rgb_callback(move |zone: &str, r: u8, g: u8, b: u8| {
-                            let state = &daemon_state_clone; // Use reference instead of double-cloning
-                            let zone_owned = zone.to_string();
-
-                            // Use a more efficient approach - avoid spawning tasks for simple operations
-                            let color = Color::new(r, g, b);
-                            let expiry = std::time::Instant::now() + Duration::from_secs(30);
-
-                            // Use try_write to avoid blocking if the lock is busy
-                            if let Ok(mut state_guard) = state.try_write() {
-                                Arc::make_mut(&mut state_guard.gamesense_overlays)
-                                    .insert(zone_owned.clone(), (color, expiry));
-                                tracing::debug!("GameSense overlay: {} = {:?}", zone_owned, color);
-                            } else {
-                                // If we can't get the lock immediately, spawn a task
-                                let state_clone = daemon_state_clone.clone();
-                                let zone_deferred = zone_owned.clone();
-                                tokio::spawn(async move {
-                                    let mut state = state_clone.write().await;
-                                    Arc::make_mut(&mut state.gamesense_overlays)
-                                        .insert(zone_deferred.clone(), (color, expiry));
-                                    tracing::debug!("GameSense overlay (deferred): {} = {:?}", zone_deferred, color);
-                                });
-                            }
-                        })
-                        .await;
-
-                    if let Err(e) = server.run().await {
-                        tracing::error!("GameSense server error: {}", e);
-                    }
-                }
-                Err(e) => tracing::error!("Failed to create GameSense server: {}", e),
-            }
-        });
-
-        info!(
-            "GameSense server starting on {}:{}",
-            config.gamesense.bind_address, config.gamesense.port
-        );
-    } else {
-        info!("GameSense server disabled in config");
-    }
-}
 
 async fn load_default_profile(config: &Config, daemon_state: Arc<RwLock<DaemonState>>) {
     if let Some(ref profile_name) = config.default_profile {
@@ -3093,15 +3020,8 @@ async fn run_animation_loop(daemon_state_anim: Arc<RwLock<DaemonState>>) {
         let computation_start = Instant::now();
 
         // Split the work: read operations first, then write operations
-        let (processed_count, overlays, _now) = {
+        let count = {
             let mut state = daemon_state_anim.write().await;
-
-            // Clean up expired overlays while we have the lock
-            let now = std::time::Instant::now();
-            let has_expired = state.gamesense_overlays.iter().any(|(_, (_, expiry))| *expiry <= now);
-            if has_expired {
-                Arc::make_mut(&mut state.gamesense_overlays).retain(|_, (_, expiry)| *expiry > now);
-            }
 
             // Collect data needed for RGB computation to minimize lock time
             // Reuse frame_data_buffer to avoid allocations
@@ -3132,35 +3052,12 @@ async fn run_animation_loop(daemon_state_anim: Arc<RwLock<DaemonState>>) {
                 count += 1;
             }
 
-            // Fast atomic clone of the Arc
-            let overlays = Arc::clone(&state.gamesense_overlays);
-
-            (count, overlays, now)
+            count
         };
 
         // Process RGB updates for each keyboard without holding the lock
-        for (serial, colors) in frame_data_buffer.iter_mut().take(processed_count) {
-            // Apply GameSense overlays using simple zone mapping
-            if !overlays.is_empty() {
-                let zone_count = colors.len();
-                for (zone, (overlay_color, _)) in overlays.iter() {
-                    match parse_zone_number(zone) {
-                        None => {
-                            // Apply to all zones
-                            for c in colors.iter_mut() {
-                                *c = *overlay_color;
-                            }
-                        }
-                        Some(idx) if idx < zone_count => {
-                            // Apply to specific zone
-                            colors[idx] = *overlay_color;
-                        }
-                        Some(_) => {
-                            // Index out of bounds, ignore
-                        }
-                    }
-                }
-            }
+        for (serial, colors) in frame_data_buffer.iter_mut().take(count) {
+
 
             // Apply colors to hardware without holding the global state lock across I/O
             // First, remove the keyboard entry from the map while holding the lock

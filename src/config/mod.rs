@@ -22,10 +22,6 @@ pub struct Config {
     /// GameSense server settings
     pub gamesense: GameSenseConfig,
 
-    /// Audio mixer settings
-    #[cfg(feature = "audio")]
-    pub audio: AudioConfig,
-
     /// Default profile name
     pub default_profile: Option<String>,
 
@@ -55,55 +51,6 @@ impl Default for GameSenseConfig {
             enabled: true,
             bind_address: "127.0.0.1".to_string(),
             port: 27301,
-        }
-    }
-}
-
-/// Audio mixer configuration.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[cfg(feature = "audio")]
-pub struct AudioConfig {
-    /// Enable audio mixer
-    pub enabled: bool,
-
-    /// Default master volume (0.0 - 1.0)
-    pub master_volume: f32,
-
-    /// Channel volumes
-    pub channels: ChannelVolumes,
-}
-
-#[cfg(feature = "audio")]
-impl Default for AudioConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            master_volume: 1.0,
-            channels: ChannelVolumes::default(),
-        }
-    }
-}
-
-/// Individual channel volume settings.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[cfg(feature = "audio")]
-pub struct ChannelVolumes {
-    pub game: f32,
-    pub chat: f32,
-    pub media: f32,
-    pub aux: f32,
-    pub mic: f32,
-}
-
-#[cfg(feature = "audio")]
-impl Default for ChannelVolumes {
-    fn default() -> Self {
-        Self {
-            game: 1.0,
-            chat: 1.0,
-            media: 1.0,
-            aux: 1.0,
-            mic: 1.0,
         }
     }
 }

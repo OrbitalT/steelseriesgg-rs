@@ -1,7 +1,7 @@
 //! Keyboard device support (Apex series).
 
 pub mod apex;
-pub mod apex_pro_tkl_2023;
+
 
 use super::diagnostics::{HidOperation, with_global_diagnostics};
 use super::hid_reports::{
@@ -961,10 +961,10 @@ mod tests {
 
     fn create_test_device_info() -> DeviceInfo {
         DeviceInfo {
+            product_id: product_ids::APEX_3_TKL,
             name: std::borrow::Cow::Borrowed("Test Apex Pro TKL 2023"),
             device_type: crate::devices::DeviceType::Keyboard,
             vendor_id: crate::STEELSERIES_VENDOR_ID,
-            product_id: product_ids::APEX_PRO_TKL_2023,
             interface_number: 1,
             serial_number: Some("TEST123".to_string()),
             manufacturer: Some("SteelSeries".to_string()),
@@ -978,8 +978,6 @@ mod tests {
 
         let db = KeyMappingDatabase::new();
 
-        assert!(db.supports_product(product_ids::APEX_PRO_TKL_2023));
-        assert!(db.get_mapping(product_ids::APEX_PRO_TKL_2023).is_some());
 
         assert!(!db.supports_product(0xFFFF));
         assert!(db.get_mapping(0xFFFF).is_none());
@@ -1075,7 +1073,6 @@ mod tests {
         let db = KeyMappingDatabase::new();
         let supported_products = db.get_supported_products();
 
-        assert!(supported_products.contains(&product_ids::APEX_PRO_TKL_2023));
         assert!(supported_products.contains(&product_ids::APEX_PRO));
         assert!(supported_products.contains(&product_ids::APEX_PRO_TKL));
 
