@@ -9,7 +9,9 @@ use super::headsets::{GenericHeadset, Headset};
 use super::hid_reports::ConnectionHealth;
 use super::keyboards::apex::Apex3Tkl;
 use super::keyboards::{GenericKeyboard, Keyboard};
-use super::product_ids::{APEX_3_TKL, APEX_PRO_TKL_2023_WIRELESS, APEX_PRO_TKL_2023_WIRELESS_2};
+use super::product_ids::{APEX_3_TKL, APEX_PRO_TKL_2023_WIRELESS, APEX_PRO_TKL_2023_WIRELESS_2, ARENA_7};
+use super::speakers::arena_7::Arena7;
+use super::speakers::{GenericSpeaker, Speaker};
 use super::{DeviceInfo, DeviceType, device_name_from_product_id, device_type_from_product_id};
 use crate::{Error, Result, STEELSERIES_VENDOR_ID};
 
@@ -253,6 +255,11 @@ impl DeviceManager {
         self.devices_by_type(DeviceType::Headset)
     }
 
+    /// Get all speakers.
+    pub fn speakers(&self) -> Vec<&DeviceInfo> {
+        self.devices_by_type(DeviceType::Speaker)
+    }
+
     /// Get a device by its path.
     pub fn device_by_path(&self, path: &str) -> Option<&DeviceInfo> {
         self.devices.get(path)
@@ -276,17 +283,22 @@ impl DeviceManager {
             }
             DeviceType::Keyboard => 1,
             DeviceType::Headset => 3,
-            DeviceType::Speaker => 3,
+            DeviceType::Speaker => 4,
             DeviceType::Unknown => info.interface_number,
         };
 
+        self.open_device_with_interface(info, control_interface)
+    }
+
+    /// Open a specific interface for a device.
+    pub fn open_device_with_interface(&self, info: &DeviceInfo, interface: i32) -> Result<hidapi::HidDevice> {
         debug!(
             "Opening device: {} (VID:{:#06x}, PID:{:#06x}, Interface:{})",
-            info.name, info.vendor_id, info.product_id, control_interface
+            info.name, info.vendor_id, info.product_id, interface
         );
 
         // Use cache for O(1) lookup instead of O(n) iteration
-        let cache_key = (info.vendor_id, info.product_id, control_interface);
+        let cache_key = (info.vendor_id, info.product_id, interface);
         if let Some(path) = self.device_cache.get(&cache_key) {
             debug!("Using cached device path: {}", path);
             // Try to open by path directly - convert String to CStr
@@ -300,7 +312,7 @@ impl DeviceManager {
         for device in self.api.device_list() {
             if device.vendor_id() == info.vendor_id
                 && device.product_id() == info.product_id
-                && device.interface_number() == control_interface
+                && device.interface_number() == interface
             {
                 return device.open_device(&self.api).map_err(Error::from);
             }
@@ -308,7 +320,7 @@ impl DeviceManager {
 
         Err(Error::DeviceNotFound(format!(
             "{} (interface {})",
-            info.name, control_interface
+            info.name, interface
         )))
     }
 
@@ -349,6 +361,38 @@ impl DeviceManager {
 
         let hid_device = self.open_device(info)?;
         Ok(Box::new(GenericHeadset::new(info.clone(), hid_device)))
+    }
+
+    /// Open a speaker device and return a boxed Speaker trait object.
+    pub fn open_speaker(&self, info: &DeviceInfo) -> Result<Box<dyn Speaker>> {
+        if info.device_type != DeviceType::Speaker {
+            return Err(Error::DeviceCommunication(format!(
+                "Device {} is not a speaker",
+                info.name
+            )));
+        }
+
+        let hid_device = self.open_device(info)?;
+        let generic_speaker = GenericSpeaker::new(info.clone(), hid_device);
+
+        match info.product_id {
+            ARENA_7 => Ok(Box::new(Arena7::new(generic_speaker))),
+            _ => Ok(Box::new(generic_speaker)),
+        }
+    }
+
+    /// Open an Apex Pro keyboard directly.
+    pub fn open_apex_pro(&self, info: &DeviceInfo) -> Result<super::keyboards::apex_pro::ApexProGen3> {
+        if info.device_type != DeviceType::Keyboard {
+            return Err(Error::DeviceCommunication(format!(
+                "Device {} is not a keyboard",
+                info.name
+            )));
+        }
+
+        let hid_device = self.open_device(info)?;
+        let generic_keyboard = GenericKeyboard::new(info.clone(), hid_device);
+        Ok(super::keyboards::apex_pro::ApexProGen3::new(generic_keyboard))
     }
 
     // === Hot-plug monitoring methods ===

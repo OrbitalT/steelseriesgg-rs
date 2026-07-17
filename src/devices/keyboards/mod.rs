@@ -1,6 +1,8 @@
 //! Keyboard device support (Apex series).
+//! Keyboard device definitions.
 
 pub mod apex;
+pub mod apex_pro;
 
 
 use super::diagnostics::{HidOperation, with_global_diagnostics};

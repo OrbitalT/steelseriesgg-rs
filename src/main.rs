@@ -2292,6 +2292,38 @@ async fn cmd_daemon(mut manager: DeviceManager) -> Result<()> {
     let daemon_state_anim = daemon_state.clone();
     let animation_task = tokio::spawn(run_animation_loop(daemon_state_anim));
 
+    // Discover Arena 7 and Apex Pro to spawn interleaved loop
+    let mut sync_daemon = None;
+    let mut canvas_tx = None;
+    {
+        let mut speaker_opt = None;
+        let mut keyboard_opt = None;
+        
+        let devices = manager.devices();
+        for info in &devices {
+            if info.product_id == steelseries_gg::devices::product_ids::ARENA_7 {
+                if let Ok(speaker) = manager.open_speaker(info) {
+                    speaker_opt = Some(speaker);
+                }
+            } else if info.product_id == steelseries_gg::devices::product_ids::APEX_PRO_TKL_2023_WIRELESS 
+                   || info.product_id == steelseries_gg::devices::product_ids::APEX_PRO_TKL_2023_WIRELESS_2
+                   || info.product_id == 0x1640 {
+                if let Ok(keyboard) = manager.open_apex_pro(info) {
+                    keyboard_opt = Some(keyboard);
+                }
+            }
+        }
+        
+        if let (Some(speaker), Some(keyboard)) = (speaker_opt, keyboard_opt) {
+            let mut daemon = steelseries_gg::daemon::Daemon::new(speaker, keyboard);
+            let (tx, rx) = tokio::sync::watch::channel(steelseries_gg::daemon::AnimationCanvas::default());
+            canvas_tx = Some(tx);
+            sync_daemon = Some(tokio::spawn(async move {
+                let _ = daemon.start(rx).await;
+            }));
+        }
+    }
+
     // Set up graceful shutdown on SIGTERM (systemd stop) and SIGINT (Ctrl+C)
     wait_for_shutdown().await?;
 
@@ -2304,6 +2336,9 @@ async fn cmd_daemon(mut manager: DeviceManager) -> Result<()> {
 
     // Abort animation task
     animation_task.abort();
+    if let Some(task) = sync_daemon {
+        task.abort();
+    }
 
     // Save final device states
     save_final_device_states(daemon_state).await;

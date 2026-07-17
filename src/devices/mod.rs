@@ -7,6 +7,7 @@ pub mod headsets;
 pub mod hid_reports;
 pub mod key_mapping;
 pub mod keyboards;
+pub mod speakers;
 pub mod zone_mapping;
 
 use parking_lot::Mutex;
@@ -510,7 +511,6 @@ pub fn device_type_from_product_id(product_id: u16) -> DeviceType {
         | ARCTIS_NOVA_7P_RX
         | ARCTIS_NOVA_7P_TX
         | ARCTIS_NOVA_5_RX
-        | ARCTIS_NOVA_5_TX
         | ARCTIS_NOVA_5_TX
         | ARCTIS_NOVA_7_RX
         | ARCTIS_NOVA_7_TX

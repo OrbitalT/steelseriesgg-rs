@@ -20,8 +20,7 @@ pub const HEADSET_REPORT_SIZE: usize = 64;
 /// HID feature report size for the Apex Pro TKL 2023 per-key RGB command (0x40).
 ///
 /// Confirmed via IOCTL_HID_SET_FEATURE capture: 3-byte header + 84 key entries × 4 bytes + 306-byte zero padding.
-#[cfg(feature = "experimental-apex-2023")]
-pub const APEX_2023_PERKEY_REPORT_SIZE: usize = 645;
+
 
 /// Maximum number of RGB zones supported by keyboards.
 pub const MAX_RGB_ZONES: usize = 12;
@@ -683,15 +682,7 @@ impl HidCommand for PerKeyRgbCommand {
 /// ```text
 /// [0x00][0x40][0x54][key_id R G B] × 84 + [0x00 × 306]
 /// ```
-#[cfg(feature = "experimental-apex-2023")]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Apex2023DirectCommand {
-    /// Key ID and color pairs.
-    ///
-    /// `key_id` is a USB HID keyboard usage ID (e.g. 0x04 = A, 0x28 = Enter).
-    /// Keys are transmitted in the order added; the firmware ignores order.
-    pub key_colors: smallvec::SmallVec<[(u8, Color); 84]>,
-}
+
 
 /// Builder for creating batch per-key RGB operations.
 #[derive(Debug)]
@@ -1557,36 +1548,6 @@ mod tests {
         assert!(cmd.key_count() >= 6);
         assert_eq!(cmd.addressing_mode, PerKeyAddressingMode::HidCode);
         assert!(cmd.validate().is_ok());
-    }
-
-    #[cfg(feature = "experimental-apex-2023")]
-    #[test]
-    fn test_apex_2023_direct_command_serialization() {
-        let mut cmd = Apex2023DirectCommand::new();
-        cmd.set_key_color(0x04, Color::RED);
-        cmd.set_key_color(0x52, Color::BLUE);
-
-        let builder = HidReportBuilder::new(HidDeviceType::Keyboard);
-        let mut buffer = [0u8; APEX_2023_PERKEY_REPORT_SIZE];
-        let size = builder.build_report(cmd, &mut buffer).unwrap();
-
-        // Confirmed 645-byte format from live IOCTL_HID_SET_FEATURE capture.
-        assert_eq!(size, APEX_2023_PERKEY_REPORT_SIZE);
-        assert_eq!(buffer[0], 0x00); // report ID
-        assert_eq!(buffer[1], 0x40); // command byte
-        assert_eq!(buffer[2], 0x54); // fixed count = 84
-        // first key entry at offset 3
-        assert_eq!(buffer[3], 0x04); // key_id A
-        assert_eq!(buffer[4], 255); // R
-        assert_eq!(buffer[5], 0); // G
-        assert_eq!(buffer[6], 0); // B
-        // second key entry at offset 7
-        assert_eq!(buffer[7], 0x52); // key_id Up
-        assert_eq!(buffer[8], 0); // R
-        assert_eq!(buffer[9], 0); // G
-        assert_eq!(buffer[10], 255); // B
-        // remainder is zero-padded
-        assert!(buffer[11..].iter().all(|&b| b == 0));
     }
 
     #[test]
