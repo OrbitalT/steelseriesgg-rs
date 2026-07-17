@@ -52,7 +52,7 @@ impl Device for Arena7 {
 #[async_trait::async_trait]
 impl Speaker for Arena7 {
     fn set_static_color(&mut self, colors: &[[u8; 3]; 4]) -> Result<()> {
-        let mut data = vec![0u8; 31];
+        let mut data = vec![0u8; 64];
         data[0] = 0x06; // Report ID
         data[1] = 0xa1; // Subtype a1
 
@@ -65,21 +65,20 @@ impl Speaker for Arena7 {
             data[offset + 3] = 0x01;     // Effect (0x01)
             data[offset + 4] = 0x1e;     // Constant (0x1e)
             data[offset + 5] = 0x0a;     // Brightness (0x0a = max)
-            data[offset + 6] = 0x00;     // Trailing pad for 7 bytes
-            offset += 7;
+            // No trailing pad needed here, we just advance by 6
+            offset += 6;
         }
 
         // Terminal footer
-        data[30] = 0x0f;
+        data[26] = 0x0f;
+
+        // Note: the rest of the buffer is 0x00 because we created it with vec![0u8; 64]
 
         self.inner.send_feature_report(&data)
     }
 
     fn set_dynamic_colorshift(&mut self, colors: &[[u8; 3]; 4]) -> Result<()> {
-        // 100-byte packet containing a 71-byte HID buffer payload under Report ID 0x06
-        // So `data` length should be 72 bytes (1 byte report ID + 71 bytes payload).
-        // HID API `write` pad to packet size if needed, but we provide exactly 72.
-        let mut data = vec![0u8; 72];
+        let mut data = vec![0u8; 64];
         data[0] = 0x06; // Report ID
         data[1] = 0xa7; // Subtype a7
         data[2] = 0x0f; // Subtype a7 0f header
